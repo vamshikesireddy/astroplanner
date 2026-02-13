@@ -1,136 +1,89 @@
-from astropy.coordinates import EarthLocation, AltAz, SkyCoord, FK5
-from astropy.time import Time
-from astropy import units as u
-from datetime import datetime, timedelta
-import pytz
 import geocoder
+import pytz
 import pandas as pd
+from datetime import datetime
 from timezonefinder import TimezoneFinder
-from astroquery.simbad import Simbad
-from astroquery.jplhorizons import Horizons
+from astropy.coordinates import EarthLocation, SkyCoord, FK5
+from astropy import units as u
+from astropy.time import Time
 
-# ----------------------------
-# MODE SELECTION
-# ----------------------------
-print("Choose mode:")
-print("1 - Manual RA/Dec Input")
-print("2 - Lookup (Star, Galaxy, Planet via SIMBAD/CDS)")
-print("3 - Comet or Asteroid via JPL Horizons")
-mode = input("Enter option 1, 2, or 3: ").strip()
+# Import from local modules
+from resolvers import resolve_simbad, resolve_horizons
+from core import compute_trajectory
 
-if mode == "1":
-    from astro_coordinates.coordinates import user_ra, user_dec, name
-    sky_coord = SkyCoord(user_ra, user_dec, frame=FK5, unit=(u.hourangle, u.deg), equinox=Time.now())
-    user_ra = sky_coord.ra
-    user_dec = sky_coord.dec
+def get_user_location():
+    g = geocoder.ip('me')
+    lat, lon = g.latlng
+    print(f"Lat: {lat}, Lon: {lon}")
+    
+    tf = TimezoneFinder()
+    local_tz = tf.timezone_at(lat=lat, lng=lon)
+    timezone = pytz.timezone(local_tz)
+    print(f"Timezone: {local_tz}")
+    
+    return EarthLocation(lat=lat*u.deg, lon=lon*u.deg), timezone
 
-elif mode == "2":
-    obj_name = input("Enter object name (e.g., Vega, M31, Mars): ").strip()
-    try:
-        sky_coord = SkyCoord.from_name(obj_name)
-        user_ra = sky_coord.ra
-        user_dec = sky_coord.dec
+def main():
+    print("Choose mode:")
+    print("1 - Manual RA/Dec Input (from coordinates.py)")
+    print("2 - Lookup (Star, Galaxy, Planet via SIMBAD/CDS)")
+    print("3 - Comet or Asteroid via JPL Horizons")
+    mode = input("Enter option 1, 2, or 3: ").strip()
 
-        custom_simbad = Simbad()
-        custom_simbad.TIMEOUT = 10
-        result_table = custom_simbad.query_object(obj_name)
+    name = "Unknown"
+    sky_coord = None
 
-        if result_table is not None and 'MAIN_ID' in result_table.colnames:
-            main_id = result_table['MAIN_ID'][0]
-            resolved_name = main_id.decode('utf-8') if isinstance(main_id, bytes) else str(main_id)
-        else:
-            resolved_name = obj_name
-            print(f"⚠️ SIMBAD returned no MAIN_ID. Using input name: {obj_name}")
+    if mode == "1":
+        try:
+            import coordinates as user_config
+            name = user_config.name
+            # Parse user input
+            sky_coord = SkyCoord(user_config.user_ra, user_config.user_dec, frame=FK5, unit=(u.hourangle, u.deg), equinox=Time.now())
+            print(f"Loaded {name} from coordinates.py")
+        except ImportError:
+            print("❌ coordinates.py not found in current directory.")
+            return
+        except Exception as e:
+            print(f"❌ Error parsing coordinates: {e}")
+            return
 
-        name = resolved_name
-        print(f"Resolved object: {name} at RA: {user_ra}, Dec: {user_dec}")
+    elif mode == "2":
+        obj_name = input("Enter object name (e.g., Vega, M31, Mars): ").strip()
+        try:
+            name, sky_coord = resolve_simbad(obj_name)
+            print(f"Resolved object: {name} at RA: {sky_coord.ra}, Dec: {sky_coord.dec}")
+        except Exception as e:
+            print(e)
+            return
 
-    except Exception as e:
-        print(f"❌ SIMBAD/CDS lookup failed: {e}")
-        exit(1)
+    elif mode == "3":
+        obj_name = input("Enter comet or asteroid name (e.g., 1P/Halley): ").strip()
+        try:
+            print(f"🔭 Using JPL Horizons to resolve '{obj_name}'...")
+            name, sky_coord = resolve_horizons(obj_name)
+            print(f"Resolved {name} at RA: {sky_coord.ra}, Dec: {sky_coord.dec}")
+        except Exception as e:
+            print(e)
+            return
 
-elif mode == "3":
-    obj_name = input("Enter comet or asteroid name (e.g., 1P/Halley, 29P/Schwassmann-Wachmann 1): ").strip()
-    try:
-        print(f"🔭 Using JPL Horizons to resolve '{obj_name}'...")
-        obs_time = Time("2026-02-13 00:30:00")  # UTC
-        location_code = '500'  # Geocentric
+    else:
+        print("❌ Invalid mode. Exiting.")
+        return
 
-        obj = Horizons(id=obj_name, location=location_code, epochs=obs_time.jd, id_type='smallbody')
-        result = obj.ephemerides()
+    # Location and Time
+    location, timezone = get_user_location()
+    
+    # Time Window Setup
+    start_local = timezone.localize(datetime(2026, 2, 13, 19, 0, 0))
+    
+    # Compute
+    results = compute_trajectory(sky_coord, location, start_local)
+    
+    # Output
+    df = pd.DataFrame(results)
+    cols = ["Local Time", "UTC Time", "LST", "Azimuth (°)", "Altitude (°)", "Direction"]
+    print(f"\nTarget: {name}")
+    print(df[cols])
 
-        ra = result['RA'][0] * u.deg
-        dec = result['DEC'][0] * u.deg
-        sky_coord = SkyCoord(ra=ra, dec=dec, frame='icrs')
-        user_ra = sky_coord.ra
-        user_dec = sky_coord.dec
-        name = obj_name
-
-        print(f"Resolved {obj_name} at RA: {user_ra}, Dec: {user_dec}")
-
-    except Exception as e:
-        print(f"❌ JPL Horizons lookup failed: {e}")
-        exit(1)
-
-else:
-    print("❌ Invalid mode. Exiting.")
-    exit(1)
-
-# ----------------------------
-# GET USER LOCATION
-# ----------------------------
-g = geocoder.ip('me')
-lat, lon = g.latlng
-print(f"Lat: {lat}, Lon: {lon}")
-
-tf = TimezoneFinder()
-local_tz = tf.timezone_at(lat=lat, lng=lon)
-timezone = pytz.timezone(local_tz)
-print(f"Timezone: {local_tz}")
-
-# ----------------------------
-# TIME WINDOW SETUP
-# ----------------------------
-start_local = timezone.localize(datetime(2026, 2, 13, 19, 0, 0))
-time_steps = [start_local + timedelta(minutes=i) for i in range(0, 241, 10)]
-
-location = EarthLocation(lat=lat*u.deg, lon=lon*u.deg)
-
-# ----------------------------
-# DIRECTION LABELING
-# ----------------------------
-def azimuth_to_compass(az):
-    directions = ['N', 'NNE', 'NE', 'ENE', 'E', 'ESE', 'SE', 'SSE',
-                  'S', 'SSW', 'SW', 'WSW', 'W', 'WNW', 'NW', 'NNW']
-    ix = int((az + 11.25) / 22.5) % 16
-    return directions[ix]
-
-# ----------------------------
-# COMPUTE POSITION DATA
-# ----------------------------
-results = []
-for t in time_steps:
-    t_utc = t.astimezone(pytz.utc)
-    time_utc = Time(t_utc)
-    altaz_frame = AltAz(obstime=time_utc, location=location)
-    altaz = sky_coord.transform_to(altaz_frame)
-    lst = time_utc.sidereal_time('apparent', longitude=location.lon)
-    compass_dir = azimuth_to_compass(altaz.az.degree)
-
-    results.append({
-        "Local Time": t.strftime('%Y-%m-%d %H:%M:%S'),
-        "UTC Time": t_utc.strftime('%Y-%m-%d %H:%M:%S'),
-        "LST": lst.to_string(sep=':', precision=2),
-        "Name": name,
-        "RA (input)": user_ra.to_string(unit=u.hour, sep=':', precision=2),
-        "Dec (input)": user_dec.to_string(sep=':', precision=2),
-        "Azimuth (°)": round(altaz.az.degree, 2),
-        "Altitude (°)": round(altaz.alt.degree, 2),
-        "Direction": compass_dir
-    })
-
-# ----------------------------
-# OUTPUT TABLE
-# ----------------------------
-df = pd.DataFrame(results)
-print(df)
+if __name__ == "__main__":
+    main()

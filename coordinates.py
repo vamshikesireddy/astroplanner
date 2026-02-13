@@ -36,4 +36,3 @@ user_dec = "25d55m13s"
 # name = "WASP-194b"
 # user_ra = "19h41m33s"
 # user_dec = "56d13m04s"
-
