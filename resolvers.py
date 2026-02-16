@@ -1,6 +1,7 @@
 from astropy.coordinates import SkyCoord, FK5
 from astropy import units as u
 from astropy.time import Time
+from datetime import timedelta
 from astroquery.simbad import Simbad
 from astroquery.jplhorizons import Horizons
 
@@ -46,3 +47,31 @@ def resolve_horizons(obj_name, obs_time_str="2026-02-13 00:30:00", location_code
         return obj_name, sky_coord
     except Exception as e:
         raise RuntimeError(f"JPL Horizons lookup failed for {obj_name}: {e}")
+
+def get_horizons_ephemerides(obj_name, start_time, duration_minutes=240, step_minutes=10, location_code='500'):
+    """Queries JPL Horizons for a range of times to get dynamic coordinates."""
+    try:
+        # Generate time steps exactly like core.py to ensure alignment
+        steps = int(duration_minutes / step_minutes) + 1
+        jd_list = []
+        
+        for i in range(steps):
+            t = start_time + timedelta(minutes=i*step_minutes)
+            # astropy Time handles timezone-aware datetimes correctly
+            jd_list.append(Time(t).jd)
+
+        # Query Horizons with list of epochs
+        try:
+            obj = Horizons(id=obj_name, location=location_code, epochs=jd_list, id_type='smallbody')
+            result = obj.ephemerides()
+        except Exception:
+            # Fallback for major bodies
+            obj = Horizons(id=obj_name, location=location_code, epochs=jd_list)
+            result = obj.ephemerides()
+
+        # Convert result table to list of SkyCoords
+        coords = [SkyCoord(ra=row['RA']*u.deg, dec=row['DEC']*u.deg, frame='icrs') for row in result]
+        return coords
+
+    except Exception as e:
+        raise RuntimeError(f"JPL Horizons ephemeris lookup failed: {e}")

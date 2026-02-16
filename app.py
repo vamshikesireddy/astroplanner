@@ -19,7 +19,7 @@ except ImportError:
     st_searchbox = None
 
 # Import from local modules
-from resolvers import resolve_simbad, resolve_horizons
+from resolvers import resolve_simbad, resolve_horizons, get_horizons_ephemerides
 from core import compute_trajectory
 from scrape import scrape_unistellar_table
 
@@ -332,8 +332,17 @@ if st.button("🚀 Calculate Visibility", type="primary", disabled=not resolved)
 
     location = EarthLocation(lat=lat*u.deg, lon=lon*u.deg)
     
+    ephem_coords = None
+    # For moving objects, fetch precise ephemerides for the duration
+    if target_mode in ["Comet (JPL Horizons)", "Asteroid (JPL Horizons)"]:
+        with st.spinner("Fetching detailed ephemerides from JPL..."):
+            try:
+                ephem_coords = get_horizons_ephemerides(obj_name, start_time, duration_minutes=duration, step_minutes=10)
+            except Exception as e:
+                st.warning(f"Could not fetch detailed ephemerides ({e}). Using fixed coordinates.")
+
     with st.spinner("Calculating trajectory..."):
-        results = compute_trajectory(sky_coord, location, start_time, duration_minutes=duration)
+        results = compute_trajectory(sky_coord, location, start_time, duration_minutes=duration, ephemeris_coords=ephem_coords)
     
     df = pd.DataFrame(results)
     
