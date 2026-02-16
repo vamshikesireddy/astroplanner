@@ -160,7 +160,7 @@ start_time = local_tz.localize(start_time)
 
 # 4. Duration
 st.sidebar.subheader("⏳ Duration")
-duration_options = [60, 120, 180, 240, 300, 360]
+duration_options = [60, 120, 180, 240, 300, 360, 480, 600, 720]
 duration = st.sidebar.selectbox("Minutes", options=duration_options, index=3) # Default 240
 
 # ---------------------------
@@ -304,6 +304,7 @@ elif target_mode == "Cosmic Cataclysm":
             
             # Display data with shortened links
             st.subheader("Available Targets")
+            st.info("ℹ️ **Note:** The links in this table are for the Unistellar app. For other telescopes, please use the **RA/Dec** coordinates to point to the object.")
             display_df = df_alerts.copy()
             link_col = next((c for c in display_df.columns if 'link' in c.lower()), None)
             if link_col:

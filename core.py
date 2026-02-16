@@ -32,8 +32,8 @@ def compute_trajectory(sky_coord, location, start_time_local, duration_minutes=2
 
         results.append({
             "Local Time": t.strftime('%Y-%m-%d %H:%M:%S'),
-            "RA": target_coord.ra.to_string(unit=u.hour, sep=':', precision=0),
-            "Dec": target_coord.dec.to_string(sep=':', precision=0, alwayssign=True),
+            "RA": target_coord.ra.to_string(unit=u.hour, sep=('h ', 'm ', 's'), precision=0, pad=True),
+            "Dec": target_coord.dec.to_string(sep=('° ', "' ", '"'), precision=0, alwayssign=True, pad=True),
             "Azimuth (°)": round(altaz.az.degree, 2),
             "Altitude (°)": round(altaz.alt.degree, 2),
             "Direction": compass_dir,
