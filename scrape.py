@@ -1,5 +1,6 @@
 import pandas as pd
 import time
+import os
 from selenium import webdriver
 from selenium.webdriver.chrome.service import Service
 from selenium.webdriver.chrome.options import Options
@@ -14,10 +15,20 @@ def scrape_unistellar_table():
     # Setup Chrome options
     options = Options()
     options.add_argument("--headless")  # Run without opening a window
+    options.add_argument("--no-sandbox") # Required for server environments
+    options.add_argument("--disable-dev-shm-usage") # Overcome limited resource problems
     options.add_argument("--window-size=1920,1080")
     options.add_argument("user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
 
-    driver = webdriver.Chrome(service=Service(ChromeDriverManager().install()), options=options)
+    # Check for system-installed chromedriver (Docker / Streamlit Cloud)
+    system_driver_path = "/usr/bin/chromedriver"
+    if os.path.exists(system_driver_path):
+        service = Service(system_driver_path)
+    else:
+        # Local fallback
+        service = Service(ChromeDriverManager().install())
+
+    driver = webdriver.Chrome(service=service, options=options)
 
     try:
         print("Connecting to Unistellar Alerts...")
@@ -60,11 +71,9 @@ def scrape_unistellar_table():
         # Create DataFrame
         df = pd.DataFrame(data, columns=headers)
         
-        # Save to CSV
-        df.to_csv("unistellar_targets.csv", index=False)
         print("\nSuccess! Sample of scraped data:")
         print(df.head(3))
-        print(f"\nSaved {len(df)} rows to 'unistellar_targets.csv'")
+        print(f"\nExtracted {len(df)} rows.")
         return df
 
     except Exception as e:

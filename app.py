@@ -13,6 +13,11 @@ try:
 except ImportError:
     get_geolocation = None
 
+try:
+    from streamlit_searchbox import st_searchbox
+except ImportError:
+    st_searchbox = None
+
 # Import from local modules
 from resolvers import resolve_simbad, resolve_horizons
 from core import compute_trajectory
@@ -38,7 +43,7 @@ if 'lon' not in st.session_state:
 def search_address():
     if st.session_state.addr_search:
         try:
-            g = geocoder.osm(st.session_state.addr_search)
+            g = geocoder.arcgis(st.session_state.addr_search, timeout=10)
             if g.ok:
                 st.session_state.lat = g.latlng[0]
                 st.session_state.lon = g.latlng[1]
@@ -54,7 +59,27 @@ if get_geolocation:
 else:
     st.sidebar.info("Install `streamlit-js-eval` for GPS support.")
 
-st.sidebar.text_input("Search Address", key="addr_search", on_change=search_address, help="Enter city or address to update coordinates")
+def search_osm(search_term):
+    if not search_term: return []
+    try:
+        g = geocoder.arcgis(search_term, maxRows=5, timeout=10)
+        return [(r.address, r.latlng) for r in g] if g.ok else []
+    except:
+        return []
+
+if st_searchbox:
+    with st.sidebar:
+        selected_loc = st_searchbox(
+            search_osm,
+            key="addr_search_box",
+            label="Search Address"
+        )
+    if selected_loc:
+        st.session_state.lat = selected_loc[0]
+        st.session_state.lon = selected_loc[1]
+else:
+    st.sidebar.text_input("Search Address", key="addr_search", on_change=search_address, help="Enter city or address to update coordinates")
+    st.sidebar.caption("Install `streamlit-searchbox` for autocomplete.")
 
 lat = st.sidebar.number_input("Latitude", key="lat", format="%.4f")
 lon = st.sidebar.number_input("Longitude", key="lon", format="%.4f")
@@ -265,6 +290,13 @@ elif target_mode == "Cosmic Cataclysm":
                     lambda x: "unistellar://..." if isinstance(x, str) and x.startswith("unistellar://") else x
                 )
             st.dataframe(display_df)
+
+            st.download_button(
+                label="Download Scraped Data (CSV)",
+                data=df_alerts.to_csv(index=False).encode('utf-8'),
+                file_name="unistellar_targets.csv",
+                mime="text/csv"
+            )
         else:
             st.error(f"Could not find 'Name' column. Found: {cols}")
             st.dataframe(df_alerts)
