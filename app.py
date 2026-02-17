@@ -332,7 +332,7 @@ elif target_mode == "Cosmic Cataclysm":
         with tab_pri:
             c1, c2 = st.columns([2, 1])
             p_name = c1.text_input("Event Name", key="rep_p_name")
-            p_val = c2.selectbox("New Priority", ["LOW", "MEDIUM", "HIGH", "URGENT"], key="rep_p_val")
+            p_val = c2.selectbox("New Priority", ["LOW", "MEDIUM", "HIGH", "URGENT", "REMOVE"], key="rep_p_val")
             if st.button("Submit Priority", key="btn_pri"):
                 if p_name:
                     with open(PENDING_FILE, "a") as f:
@@ -381,8 +381,12 @@ elif target_mode == "Cosmic Cataclysm":
                         if r_reason.startswith("Priority:"):
                             # Handle Priority
                             val = r_reason.split(":")[1].strip()
-                            if "priorities" not in config: config["priorities"] = {}
-                            config["priorities"][r_name] = val
+                            if val == "REMOVE":
+                                if "priorities" in config and r_name in config["priorities"]:
+                                    del config["priorities"][r_name]
+                            else:
+                                if "priorities" not in config: config["priorities"] = {}
+                                config["priorities"][r_name] = val
                         else:
                             # Handle Block
                             key = "cancelled" if r_reason == "Cancelled" else "too_faint"
