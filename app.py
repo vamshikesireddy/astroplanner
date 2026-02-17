@@ -26,11 +26,38 @@ except ImportError:
     Github = None
 
 # Import from local modules
-from resolvers import resolve_simbad, resolve_horizons, get_horizons_ephemerides
+from resolvers import resolve_simbad, resolve_horizons, get_horizons_ephemerides, resolve_planet, get_planet_ephemerides
 from core import compute_trajectory, calculate_planning_info
 from scrape import scrape_unistellar_table
 
 st.set_page_config(page_title="Astro Coordinates", page_icon="🔭", layout="wide")
+
+@st.cache_data(ttl=3600, show_spinner="Calculating planetary visibility...")
+def get_planet_summary(lat, lon, start_time):
+    planet_map = {
+        "Mercury": "199", "Venus": "299", "Mars": "499", "Jupiter": "599",
+        "Saturn": "699", "Uranus": "799", "Neptune": "899", "Pluto": "999"
+    }
+    location = EarthLocation(lat=lat*u.deg, lon=lon*u.deg)
+    utc_start = start_time.astimezone(pytz.utc)
+    obs_time_str = utc_start.strftime('%Y-%m-%d %H:%M:%S')
+    
+    data = []
+    for p_name, p_id in planet_map.items():
+        try:
+            _, sky_coord = resolve_planet(p_id, obs_time_str=obs_time_str)
+            details = calculate_planning_info(sky_coord, location, start_time)
+            
+            row = {
+                "Name": p_name,
+                "RA": sky_coord.ra.to_string(unit=u.hour, sep=('h ', 'm ', 's'), precision=0, pad=True),
+                "Dec": sky_coord.dec.to_string(sep=('° ', "' ", '"'), precision=0, alwayssign=True, pad=True),
+            }
+            row.update(details)
+            data.append(row)
+        except Exception:
+            continue
+    return pd.DataFrame(data)
 
 # --- Hide Streamlit Branding & Toolbar ---
 hide_st_style = """
@@ -55,6 +82,7 @@ with st.expander("ℹ️ How to Use"):
     ### 2. Choose a Target
     Select one of the five modes:
     *   **🌌 Star/Galaxy/Nebula:** Enter a name (e.g., `M42`, `Vega`).
+    *   **🪐 Planet:** Select a major planet.
     *   **☄️ Comet:** Select from popular comets or search JPL Horizons.
     *   **🪨 Asteroid:** Select major asteroids or search by name.
     *   **💥 Cosmic Cataclysm:** Live alerts for transient events. **(New: Report invalid/cancelled events or suggest priorities)**.
@@ -187,7 +215,7 @@ st.header("1. Choose Target")
 
 target_mode = st.radio(
     "Select Object Type:",
-    ["Star/Galaxy/Nebula (SIMBAD)", "Comet (JPL Horizons)", "Asteroid (JPL Horizons)", "Cosmic Cataclysm", "Manual RA/Dec"],
+    ["Star/Galaxy/Nebula (SIMBAD)", "Planet (JPL Horizons)", "Comet (JPL Horizons)", "Asteroid (JPL Horizons)", "Cosmic Cataclysm", "Manual RA/Dec"],
     horizontal=True
 )
 
@@ -203,6 +231,44 @@ if target_mode == "Star/Galaxy/Nebula (SIMBAD)":
             with st.spinner(f"Resolving {obj_name}..."):
                 name, sky_coord = resolve_simbad(obj_name)
             st.success(f"✅ Resolved: **{name}** (RA: {sky_coord.ra.to_string(unit=u.hour, sep=':', precision=1)}, Dec: {sky_coord.dec.to_string(sep=':', precision=1)})")
+            resolved = True
+        except Exception as e:
+            st.error(f"Could not resolve object: {e}")
+
+elif target_mode == "Planet (JPL Horizons)":
+    planet_map = {
+        "Mercury": "199",
+        "Venus": "299",
+        "Mars": "499",
+        "Jupiter": "599",
+        "Saturn": "699",
+        "Uranus": "799",
+        "Neptune": "899",
+        "Pluto": "999"
+    }
+    
+    if lat is not None and lon is not None:
+        df_planets = get_planet_summary(lat, lon, start_time)
+        if not df_planets.empty:
+            st.caption("Visibility for tonight:")
+            cols = ["Name", "Constellation", "Rise", "Transit", "Set", "RA", "Dec", "Status"]
+            st.dataframe(df_planets[cols], hide_index=True)
+    else:
+        st.info("Set location in sidebar to see visibility summary for all planets.")
+
+    selected_target = st.selectbox("Select a Planet", list(planet_map.keys()))
+    
+    # Use JPL Horizons IDs to avoid ambiguity (e.g. Mercury vs Mercury Barycenter)
+    obj_name = planet_map[selected_target]
+    
+    if obj_name:
+        try:
+            with st.spinner(f"Querying JPL Horizons for {selected_target}..."):
+                utc_start = start_time.astimezone(pytz.utc)
+                _, sky_coord = resolve_planet(obj_name, obs_time_str=utc_start.strftime('%Y-%m-%d %H:%M:%S'))
+            
+            name = selected_target
+            st.success(f"✅ Resolved: **{name}**")
             resolved = True
         except Exception as e:
             st.error(f"Could not resolve object: {e}")
@@ -621,6 +687,12 @@ if st.button("🚀 Calculate Visibility", type="primary", disabled=not resolved)
                 ephem_coords = get_horizons_ephemerides(obj_name, start_time, duration_minutes=duration, step_minutes=10)
             except Exception as e:
                 st.warning(f"Could not fetch detailed ephemerides ({e}). Using fixed coordinates.")
+    elif target_mode == "Planet (JPL Horizons)":
+        with st.spinner("Fetching planetary ephemerides from JPL..."):
+            try:
+                ephem_coords = get_planet_ephemerides(obj_name, start_time, duration_minutes=duration, step_minutes=10)
+            except Exception as e:
+                st.warning(f"Could not fetch planetary ephemerides ({e}). Using fixed coordinates.")
 
     with st.spinner("Calculating trajectory..."):
         results = compute_trajectory(sky_coord, location, start_time, duration_minutes=duration, ephemeris_coords=ephem_coords)

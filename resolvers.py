@@ -112,3 +112,37 @@ def get_horizons_ephemerides(obj_name, start_time, duration_minutes=240, step_mi
 
     except Exception as e:
         raise RuntimeError(f"JPL Horizons ephemeris lookup failed: {e}")
+
+def resolve_planet(obj_name, obs_time_str="2026-02-13 00:30:00", location_code='500'):
+    """Resolves a major planet using JPL Horizons."""
+    try:
+        obs_time = Time(obs_time_str)
+        # Use id_type='majorbody' for planets. No closest_apparition needed.
+        obj = Horizons(id=obj_name, location=location_code, epochs=obs_time.jd, id_type='majorbody')
+        result = obj.ephemerides()
+
+        ra = result['RA'][0] * u.deg
+        dec = result['DEC'][0] * u.deg
+        sky_coord = SkyCoord(ra=ra, dec=dec, frame='icrs')
+        
+        return obj_name, sky_coord
+    except Exception as e:
+        raise RuntimeError(f"JPL Horizons planet lookup failed for {obj_name}: {e}")
+
+def get_planet_ephemerides(obj_name, start_time, duration_minutes=240, step_minutes=10, location_code='500'):
+    """Queries JPL Horizons for planetary ephemerides."""
+    try:
+        steps = int(duration_minutes / step_minutes) + 1
+        jd_list = []
+        
+        for i in range(steps):
+            t = start_time + timedelta(minutes=i*step_minutes)
+            jd_list.append(Time(t).jd)
+
+        obj = Horizons(id=obj_name, location=location_code, epochs=jd_list, id_type='majorbody')
+        result = obj.ephemerides()
+
+        coords = [SkyCoord(ra=row['RA']*u.deg, dec=row['DEC']*u.deg, frame='icrs') for row in result]
+        return coords
+    except Exception as e:
+        raise RuntimeError(f"JPL Horizons planetary ephemeris lookup failed: {e}")
