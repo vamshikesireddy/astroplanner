@@ -41,7 +41,7 @@ with st.expander("ℹ️ How to Use"):
     *   **🌌 Star/Galaxy/Nebula:** Enter a name (e.g., `M42`, `Vega`).
     *   **☄️ Comet:** Select from popular comets or search JPL Horizons.
     *   **🪨 Asteroid:** Select major asteroids or search by name.
-    *   **💥 Cosmic Cataclysm:** Scrape live alerts for transient events.
+    *   **💥 Cosmic Cataclysm:** Live alerts for transient events. **(New: Report & filter false/concluded events)**.
     *   **✍️ Manual:** Enter RA/Dec directly.
 
     ### 3. Calculate & Analyze

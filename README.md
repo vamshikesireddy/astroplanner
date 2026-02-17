@@ -11,7 +11,7 @@ Instead of guessing, you can calculate the exact **Altitude** (height above hori
 *   **Precise Location & Time:** Automatically detects timezones based on your latitude/longitude.
 *   **Deep Sky Resolver (SIMBAD):** Instantly find coordinates for millions of stars, galaxies, and nebulae.
 *   **Solar System Objects (JPL Horizons):** Accurate ephemerides for comets and asteroids.
-*   **Cosmic Cataclysms:** Live scraping of transient events (novae, supernovae) from Unistellar alerts.
+*   **Cosmic Cataclysms:** Live scraping of transient events (novae, supernovae) from Unistellar alerts. Includes a reporting system to filter out false or concluded events.
 *   **Visibility Charts:** Visual graphs showing how high an object climbs in the sky.
 *   **Data Export:** Download trajectory data as CSV for use in telescope mount software.
 
@@ -43,7 +43,7 @@ Select one of the five modes:
 *   **🌌 Star/Galaxy/Nebula:** Enter a name (e.g., `M42`, `Vega`).
 *   **☄️ Comet:** Select from popular comets or search JPL Horizons.
 *   **🪨 Asteroid:** Select major asteroids or search by name.
-*   **💥 Cosmic Cataclysm:** Scrape live alerts for transient events.
+*   **💥 Cosmic Cataclysm:** Scrape live alerts for transient events. Use the "Report" feature to flag invalid targets.
 *   **✍️ Manual:** Enter RA/Dec directly.
 
 ### 4. Calculate & Analyze
