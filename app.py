@@ -389,6 +389,21 @@ elif target_mode == "Cosmic Cataclysm":
             except Exception as e:
                 st.error(f"GitHub Sync Error: {e}")
 
+    def send_notification(title, body):
+        """Creates a GitHub Issue to notify admin of new requests."""
+        token = st.secrets.get("GITHUB_TOKEN")
+        repo_name = st.secrets.get("GITHUB_REPO")
+        
+        if token and repo_name and Github:
+            try:
+                g = Github(token)
+                repo = g.get_repo(repo_name)
+                # Assign to self (token owner) to ensure visibility
+                me = g.get_user()
+                repo.create_issue(title=title, body=body, assignee=me.login)
+            except Exception as e:
+                print(f"Failed to send notification: {e}")
+
     # 1. Report UI (Public)
     with st.expander("🚩 Report Invalid/Cancelled Event / Suggest Priority"):
         st.caption("Report invalid events or suggest priority changes.")
@@ -403,6 +418,8 @@ elif target_mode == "Cosmic Cataclysm":
                 if b_name:
                     with open(PENDING_FILE, "a") as f:
                         f.write(f"{b_name}|{b_reason}\n")
+                    
+                    send_notification(f"🚫 Block Request: {b_name}", f"**Target:** {b_name}\n**Reason:** {b_reason}\n\n_Submitted via Astro Planner App_")
                     st.success(f"Report for '{b_name}' submitted.")
         
         with tab_pri:
@@ -413,6 +430,8 @@ elif target_mode == "Cosmic Cataclysm":
                 if p_name:
                     with open(PENDING_FILE, "a") as f:
                         f.write(f"{p_name}|Priority: {p_val}\n")
+                    
+                    send_notification(f"⭐ Priority Request: {p_name}", f"**Target:** {p_name}\n**New Priority:** {p_val}\n\n_Submitted via Astro Planner App_")
                     st.success(f"Priority for '{p_name}' submitted.")
 
     # Display Active Priority Overrides
