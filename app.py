@@ -47,7 +47,7 @@ with st.expander("ℹ️ How to Use"):
     *   **🌌 Star/Galaxy/Nebula:** Enter a name (e.g., `M42`, `Vega`).
     *   **☄️ Comet:** Select from popular comets or search JPL Horizons.
     *   **🪨 Asteroid:** Select major asteroids or search by name.
-    *   **💥 Cosmic Cataclysm:** Live alerts for transient events. **(New: Report & filter false/concluded events)**.
+    *   **💥 Cosmic Cataclysm:** Live alerts for transient events. **(New: Report invalid/cancelled events or suggest priorities)**.
     *   **✍️ Manual:** Enter RA/Dec directly.
 
     ### 3. Calculate & Analyze
@@ -314,7 +314,7 @@ elif target_mode == "Cosmic Cataclysm":
                 st.error(f"GitHub Sync Error: {e}")
 
     # 1. Report UI (Public)
-    with st.expander("🚩 Report Issue / Suggest Priority"):
+    with st.expander("🚩 Report Invalid/Cancelled Event / Suggest Priority"):
         st.caption("Report invalid events or suggest priority changes.")
         
         tab_block, tab_pri = st.tabs(["🚫 Block Target", "⭐ Suggest Priority"])
