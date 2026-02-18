@@ -822,7 +822,7 @@ elif target_mode == "Cosmic Cataclysm":
                     st.dataframe(final_table, width="stretch")
 
             # Tabs
-            tab_obs, tab_filt = st.tabs([f"🎯 Observable ({len(df_obs)})", f"👻 Filtered ({len(df_filt)})"])
+            tab_obs, tab_filt = st.tabs([f"🎯 Observable ({len(df_obs)})", f"👻 Unobservable ({len(df_filt)})"])
             
             with tab_obs:
                 st.subheader("Available Targets")
