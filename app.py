@@ -126,7 +126,7 @@ if get_geolocation:
             else:
                 error = loc.get('error')
                 if isinstance(error, dict) and error.get('code') == 1:
-                    st.sidebar.error("⚠️ Permission Denied. Please allow location access in your browser settings.")
+                    st.sidebar.error("⚠️ Permission Denied. Please allow location access in your browser settings or Type Address to get coordinates.")
                 else:
                     st.sidebar.error(f"GPS Error: {error}")
                     st.sidebar.write(loc)
@@ -260,7 +260,7 @@ elif target_mode == "Planet (JPL Horizons)":
         if not df_planets.empty:
             st.caption("Visibility for tonight:")
             cols = ["Name", "Constellation", "Rise", "Transit", "Set", "RA", "Dec", "Status"]
-            st.dataframe(df_planets[cols], hide_index=True)
+            st.dataframe(df_planets[cols], hide_index=True, width="stretch")
     else:
         st.info("Set location in sidebar to see visibility summary for all planets.")
 
@@ -663,7 +663,7 @@ elif target_mode == "Cosmic Cataclysm":
             
             final_table = df_display.drop(columns=actual_cols_to_drop, errors='ignore')
             
-            st.dataframe(final_table)
+            st.dataframe(final_table, width="stretch")
 
             st.download_button(
                 label="Download Scraped Data (CSV)",
@@ -673,7 +673,7 @@ elif target_mode == "Cosmic Cataclysm":
             )
         else:
             st.error(f"Could not find 'Name' column. Found: {cols}")
-            st.dataframe(df_alerts)
+            st.dataframe(df_alerts, width="stretch")
     elif lat is not None and lon is not None:
         st.error("Failed to scrape data. Please check the scraper logs.")
 
