@@ -62,10 +62,8 @@ def get_planet_summary(lat, lon, start_time):
 # --- Hide Streamlit Branding & Toolbar ---
 hide_st_style = """
             <style>
-            #MainMenu {visibility: hidden;}
+            #MainMenu {visibility: visible;}
             footer {visibility: hidden;}
-            [data-testid="stToolbar"] {display: none;}
-            [data-testid="stHeader"] {visibility: visible;}
             </style>
             """
 st.markdown(hide_st_style, unsafe_allow_html=True)
