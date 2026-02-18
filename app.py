@@ -124,8 +124,12 @@ if get_geolocation:
                 st.session_state.lat = loc['coords']['latitude']
                 st.session_state.lon = loc['coords']['longitude']
             else:
-                st.sidebar.error(f"GPS Error: {loc.get('error', 'Unknown error')}")
-                st.sidebar.write(loc)
+                error = loc.get('error')
+                if isinstance(error, dict) and error.get('code') == 1:
+                    st.sidebar.error("⚠️ Permission Denied. Please allow location access in your browser settings.")
+                else:
+                    st.sidebar.error(f"GPS Error: {error}")
+                    st.sidebar.write(loc)
 else:
     st.sidebar.info("Install `streamlit-js-eval` for GPS support.")
 
@@ -445,7 +449,7 @@ elif target_mode == "Cosmic Cataclysm":
             st.caption("These targets have manually assigned priorities:")
             p_items = list(current_config["priorities"].items())
             p_df = pd.DataFrame(p_items, columns=["Target", "Priority"])
-            st.dataframe(p_df, hide_index=True, use_container_width=True)
+            st.dataframe(p_df, hide_index=True, width="stretch")
 
     # 2. Admin UI (Restricted)
     with st.sidebar:
