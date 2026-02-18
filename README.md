@@ -12,6 +12,7 @@ Instead of guessing, you can calculate the exact **Altitude** (height above hori
 *   **Deep Sky Resolver (SIMBAD):** Instantly find coordinates for millions of stars, galaxies, and nebulae.
 *   **Solar System Objects (JPL Horizons):** Accurate ephemerides for planets, comets, and asteroids.
 *   **Cosmic Cataclysms:** Live scraping of transient events (novae, supernovae) from Unistellar alerts. Includes a reporting system to filter out invalid/cancelled events or suggest target priorities.
+*   **Observational Filters:** Filter targets based on your local horizon (Minimum Altitude) and visible sky direction (Azimuth).
 *   **Visibility Charts:** Visual graphs showing how high an object climbs in the sky.
 *   **Data Export:** Download trajectory data as CSV for use in telescope mount software.
 
@@ -33,10 +34,11 @@ Instead of guessing, you can calculate the exact **Altitude** (height above hori
     streamlit run app.py
     ```
 
-### 2. Set Location & Time (Sidebar)
+### 2. Set Location, Time & Filters (Sidebar)
 *   **Location:** Search for a city, use Browser GPS, or enter coordinates manually.
 *   **Time:** Set your observation start date and time.
 *   **Duration:** Choose how long you plan to image.
+*   **Filters:** Set minimum Altitude and Azimuth range to match your viewing site.
 
 ### 3. Choose a Target
 Select one of the five modes:

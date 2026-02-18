@@ -141,10 +141,11 @@ st.markdown("Plan your astrophotography sessions with visibility predictions.")
 
 with st.expander("ℹ️ How to Use"):
     st.markdown("""
-    ### 1. Set Location & Time (Sidebar)
+    ### 1. Set Location, Time & Filters (Sidebar)
     *   **Location:** Search for a city, use Browser GPS, or enter coordinates manually.
     *   **Time:** Set your observation start date and time.
     *   **Duration:** Choose how long you plan to image.
+    *   **Observational Filters:** Set minimum Altitude and Azimuth range to filter out targets blocked by terrain or horizon.
 
     ### 2. Choose a Target
     Select one of the five modes:
