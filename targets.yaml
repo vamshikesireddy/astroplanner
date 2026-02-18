@@ -24,6 +24,7 @@ cancelled:
 - ZTF26aadwzbu
 - ZTF18aaijvrj
 priorities:
+  HAT-P-12: HIGH
   SN2025rbs: LOW
   T CrB: HIGH
 too_faint:
