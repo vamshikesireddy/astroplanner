@@ -650,7 +650,13 @@ elif target_mode == "Cosmic Cataclysm":
             # 2. Priorities
             # Find Priority column (e.g., 'Pri', 'Priority')
             pri_col = next((c for c in cols if c.lower().startswith('pri')), None)
-            if pri_col and "priorities" in config:
+            
+            # If not found, create it so we can display priorities
+            if not pri_col:
+                pri_col = "Priority"
+                df_alerts[pri_col] = ""
+
+            if "priorities" in config:
                 for p_name, p_val in config["priorities"].items():
                     # Update rows where target name contains the priority key
                     mask = df_alerts[target_col].astype(str).apply(lambda x: p_name.lower() in x.lower())
@@ -709,6 +715,43 @@ elif target_mode == "Cosmic Cataclysm":
             other_cols = [c for c in df_display.columns if c not in priority_cols]
             df_display = df_display[priority_cols + other_cols]
 
+            # Display data
+            st.subheader("Available Targets")
+            plot_visibility_timeline(df_display)
+            
+            # Filter columns for display
+            cols_to_remove_keywords = ['link', 'deeplink', 'exposure', 'cadence', 'gain', 'exp', 'cad']
+            actual_cols_to_drop = [
+                col for col in df_display.columns 
+                if any(keyword in col.lower() for keyword in cols_to_remove_keywords)
+            ]
+            # Also drop hidden columns used for plotting
+            hidden_cols = [c for c in df_display.columns if c.startswith('_')]
+            final_table = df_display.drop(columns=actual_cols_to_drop + hidden_cols, errors='ignore')
+            
+            if pri_col and pri_col in final_table.columns:
+                def highlight_row(row):
+                    val = str(row[pri_col]).upper().strip()
+                    style = ""
+                    if "URGENT" in val: style = "background-color: #ff4b4b; color: white; font-weight: bold"
+                    elif "HIGH" in val: style = "background-color: #ffa500; color: black; font-weight: bold"
+                    elif "MEDIUM" in val: style = "background-color: #ffe312; color: black"
+                    elif "LOW" in val: style = "background-color: #90ee90; color: black"
+                    return [style] * len(row)
+
+                st.dataframe(final_table.style.apply(highlight_row, axis=1), width="stretch")
+            else:
+                st.dataframe(final_table, width="stretch")
+
+            st.download_button(
+                label="Download Scraped Data (CSV)",
+                data=df_alerts.to_csv(index=False).encode('utf-8'),
+                file_name="unistellar_targets.csv",
+                mime="text/csv"
+            )
+
+            st.markdown("---")
+            st.subheader("Select Target for Trajectory")
             targets = df_display[target_col].unique()
             obj_name = st.selectbox("Select Target", targets)
             
@@ -728,29 +771,6 @@ elif target_mode == "Cosmic Cataclysm":
                         st.success(f"✅ Resolved: **{name}**")
                     except Exception as e:
                         st.error(f"Error parsing coordinates: {e}")
-            
-            # Display data
-            st.subheader("Available Targets")
-            plot_visibility_timeline(df_display)
-            
-            # Filter columns for display
-            cols_to_remove_keywords = ['link', 'deeplink', 'exposure', 'cadence', 'gain', 'exp', 'cad']
-            actual_cols_to_drop = [
-                col for col in df_display.columns 
-                if any(keyword in col.lower() for keyword in cols_to_remove_keywords)
-            ]
-            # Also drop hidden columns used for plotting
-            hidden_cols = [c for c in df_display.columns if c.startswith('_')]
-            final_table = df_display.drop(columns=actual_cols_to_drop + hidden_cols, errors='ignore')
-            
-            st.dataframe(final_table, width="stretch")
-
-            st.download_button(
-                label="Download Scraped Data (CSV)",
-                data=df_alerts.to_csv(index=False).encode('utf-8'),
-                file_name="unistellar_targets.csv",
-                mime="text/csv"
-            )
         else:
             st.error(f"Could not find 'Name' column. Found: {cols}")
             st.dataframe(df_alerts, width="stretch")
