@@ -99,13 +99,15 @@ def calculate_planning_info(sky_coord, location, start_time):
             set_time = transit_time + timedelta(hours=h_hours)
             
             # Format times
-            time_fmt = f"%H:%M {tz_str}"
+            time_fmt = f"%m-%d %H:%M {tz_str}"
             return {
                 "Constellation": constellation,
                 "Transit": transit_time.strftime(time_fmt),
                 "Rise": rise_time.strftime(time_fmt),
                 "Set": set_time.strftime(time_fmt),
-                "Status": "Visible"
+                "Status": "Visible",
+                "_rise_datetime": rise_time,
+                "_set_datetime": set_time
             }
             
     except Exception:
@@ -113,8 +115,10 @@ def calculate_planning_info(sky_coord, location, start_time):
 
     return {
         "Constellation": constellation,
-        "Transit": transit_time.strftime(f"%H:%M {tz_str}"),
+        "Transit": transit_time.strftime(f"%m-%d %H:%M {tz_str}"),
         "Rise": "---",
         "Set": "---",
-        "Status": status if 'status' in locals() else "Error"
+        "Status": status if 'status' in locals() else "Error",
+        "_rise_datetime": None,
+        "_set_datetime": None
     }

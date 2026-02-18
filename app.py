@@ -6,6 +6,7 @@ import geocoder
 import pytz
 from datetime import datetime
 from timezonefinder import TimezoneFinder
+import altair as alt
 from astropy.coordinates import EarthLocation, SkyCoord, FK5
 from astropy import units as u
 from astropy.time import Time
@@ -58,6 +59,51 @@ def get_planet_summary(lat, lon, start_time):
         except Exception:
             continue
     return pd.DataFrame(data)
+
+def plot_visibility_timeline(df):
+    """Generates a Gantt-style chart showing Rise to Set times."""
+    # Filter for objects with valid rise/set times
+    chart_data = df.dropna(subset=['_rise_datetime', '_set_datetime']).copy()
+    
+    if chart_data.empty:
+        return
+
+    # Convert to naive datetime to display "Wall Clock" time on the chart
+    chart_data['_rise_naive'] = chart_data['_rise_datetime'].apply(lambda x: x.replace(tzinfo=None) if pd.notnull(x) else None)
+    chart_data['_set_naive'] = chart_data['_set_datetime'].apply(lambda x: x.replace(tzinfo=None) if pd.notnull(x) else None)
+    
+    # Dynamic height: 30px per item + buffer to ensure all labels are visible
+    row_height = 30
+    chart_height = len(chart_data) * row_height
+
+    # Base Chart
+    base = alt.Chart(chart_data).encode(
+        y=alt.Y('Name', sort='x', title=None),
+        tooltip=['Name', 'Rise', 'Transit', 'Set', 'Constellation', 'Status']
+    )
+
+    # Bars
+    bars = base.mark_bar(cornerRadius=3, height=20).encode(
+        x=alt.X('_rise_naive', title='Local Time', axis=alt.Axis(format='%m-%d %H:%M', orient='top')),
+        x2='_set_naive',
+        color=alt.Color('Name', legend=None)
+    )
+
+    # Text Labels (Rise & Set times on the bars)
+    text_rise = base.mark_text(align='left', baseline='middle', dx=5, color='white').encode(
+        x='_rise_naive', text=alt.Text('_rise_naive', format='%m-%d %H:%M')
+    )
+    text_set = base.mark_text(align='right', baseline='middle', dx=-5, color='white').encode(
+        x='_set_naive', text=alt.Text('_set_naive', format='%m-%d %H:%M')
+    )
+
+    chart = (bars + text_rise + text_set).properties(title="Visibility Window (Rise → Set)", height=chart_height)
+
+    if len(chart_data) > 10:
+        with st.container(height=400):
+            st.altair_chart(chart, use_container_width=True)
+    else:
+        st.altair_chart(chart, use_container_width=True)
 
 # --- Hide Streamlit Branding & Toolbar ---
 hide_st_style = """
@@ -263,6 +309,7 @@ elif target_mode == "Planet (JPL Horizons)":
             st.caption("Visibility for tonight:")
             cols = ["Name", "Constellation", "Rise", "Transit", "Set", "RA", "Dec", "Status"]
             st.dataframe(df_planets[cols], hide_index=True, width="stretch")
+            plot_visibility_timeline(df_planets)
     else:
         st.info("Set location in sidebar to see visibility summary for all planets.")
 
@@ -655,6 +702,7 @@ elif target_mode == "Cosmic Cataclysm":
             
             # Display data
             st.subheader("Available Targets")
+            plot_visibility_timeline(df_display)
             
             # Filter columns for display
             cols_to_remove_keywords = ['link', 'deeplink', 'exposure', 'cadence', 'gain', 'exp', 'cad']
@@ -662,8 +710,9 @@ elif target_mode == "Cosmic Cataclysm":
                 col for col in df_display.columns 
                 if any(keyword in col.lower() for keyword in cols_to_remove_keywords)
             ]
-            
-            final_table = df_display.drop(columns=actual_cols_to_drop, errors='ignore')
+            # Also drop hidden columns used for plotting
+            hidden_cols = [c for c in df_display.columns if c.startswith('_')]
+            final_table = df_display.drop(columns=actual_cols_to_drop + hidden_cols, errors='ignore')
             
             st.dataframe(final_table, width="stretch")
 
@@ -741,10 +790,17 @@ if st.button("🚀 Calculate Visibility", type="primary", disabled=not resolved)
 
     # Chart
     st.subheader("Altitude vs Time")
-    # Create a simple line chart
-    chart_data = df[["Local Time", "Altitude (°)"]].copy()
+    
+    chart_data = df.copy()
     chart_data["Local Time"] = pd.to_datetime(chart_data["Local Time"])
-    st.line_chart(chart_data.set_index("Local Time"))
+
+    chart = alt.Chart(chart_data).mark_line(point=True).encode(
+        x=alt.X('Local Time', axis=alt.Axis(format='%H:%M')),
+        y=alt.Y('Altitude (°)'),
+        tooltip=[alt.Tooltip('Local Time', format='%Y-%m-%d %H:%M'), 'Altitude (°)', 'Azimuth (°)', 'Direction']
+    ).interactive()
+    
+    st.altair_chart(chart, use_container_width=True)
 
     # Data Table
     st.subheader("Detailed Data")
