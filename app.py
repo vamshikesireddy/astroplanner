@@ -379,6 +379,61 @@ def get_unistellar_scraped_asteroids():
         return []
 
 
+DSO_FILE = "dso_targets.yaml"
+
+
+def load_dso_config():
+    """Load curated DSO catalog (Messier, Bright Stars, Astrophotography Favorites) from YAML."""
+    if os.path.exists(DSO_FILE):
+        with open(DSO_FILE, "r") as f:
+            data = yaml.safe_load(f) or {}
+    else:
+        data = {}
+    data.setdefault("messier", [])
+    data.setdefault("bright_stars", [])
+    data.setdefault("astrophotography_favorites", [])
+    return data
+
+
+@st.cache_data(ttl=3600, show_spinner="Calculating DSO visibility...")
+def get_dso_summary(lat, lon, start_time, dso_tuple):
+    """Batch-calculate rise/set/moon info for all DSOs using pre-stored coordinates.
+    dso_tuple: tuple of (name, ra_deg, dec_deg, obj_type, magnitude, common_name)
+    """
+    location = EarthLocation(lat=lat * u.deg, lon=lon * u.deg)
+    t_moon = Time(start_time)
+    try:
+        moon_loc_inner = get_moon(t_moon, location)
+        sun_loc_inner = get_sun(t_moon)
+        elongation = sun_loc_inner.separation(moon_loc_inner)
+        moon_illum_inner = float(0.5 * (1 - math.cos(elongation.rad))) * 100
+    except Exception:
+        moon_loc_inner = None
+        moon_illum_inner = 0
+    data = []
+    for entry in dso_tuple:
+        d_name, ra_deg, dec_deg, obj_type, magnitude, common_name = entry
+        try:
+            sky_coord = SkyCoord(ra=ra_deg * u.deg, dec=dec_deg * u.deg, frame='icrs')
+            details = calculate_planning_info(sky_coord, location, start_time)
+            moon_sep = sky_coord.separation(moon_loc_inner).degree if moon_loc_inner else 0.0
+            row = {
+                "Name": d_name,
+                "Common Name": common_name,
+                "Type": obj_type,
+                "Magnitude": magnitude,
+                "RA": sky_coord.ra.to_string(unit=u.hour, sep=('h ', 'm ', 's'), precision=0, pad=True),
+                "Dec": sky_coord.dec.to_string(sep=('° ', "' ", '"'), precision=0, alwayssign=True, pad=True),
+                "Moon Sep (°)": round(moon_sep, 1),
+                "Moon Status": get_moon_status(moon_illum_inner, moon_sep) if moon_loc_inner else "",
+            }
+            row.update(details)
+            data.append(row)
+        except Exception:
+            continue
+    return pd.DataFrame(data)
+
+
 # --- Hide Streamlit Branding & Toolbar ---
 hide_st_style = """
             <style>
@@ -404,8 +459,8 @@ with st.expander("ℹ️ How to Use"):
     *   **Observational Filters:** Set Altitude range (Min/Max), Azimuth, and Moon Separation to filter targets.
 
     ### 2. Choose a Target
-    Select one of the five modes:
-    *   **🌌 Star/Galaxy/Nebula:** Enter a name (e.g., `M42`, `Vega`).
+    Select one of the six modes:
+    *   **🌌 Star/Galaxy/Nebula:** Browse the full Messier catalog, Bright Stars, or Astrophotography Favorites with batch visibility (Observable/Unobservable tabs + Gantt chart). Filter by object type. Select any target for a full trajectory, or use 'Custom Object...' to search SIMBAD for any object by name.
     *   **🪐 Planet:** Select a major planet.
     *   **☄️ Comet:** Select from popular comets or search JPL Horizons.
     *   **🪨 Asteroid:** Select major asteroids or search by name.
@@ -615,15 +670,192 @@ resolved = False
 
 
 if target_mode == "Star/Galaxy/Nebula (SIMBAD)":
-    obj_name = st.text_input("Enter Object Name (e.g., M31, Vega, Pleiades)", value="M42")
-    if obj_name:
-        try:
-            with st.spinner(f"Resolving {obj_name}..."):
-                name, sky_coord = resolve_simbad(obj_name)
-            st.success(f"✅ Resolved: **{name}** (RA: {sky_coord.ra.to_string(unit=u.hour, sep=':', precision=1)}, Dec: {sky_coord.dec.to_string(sep=':', precision=1)})")
+    dso_config = load_dso_config()
+
+    # --- Category & Type Filters ---
+    col_cat, col_type = st.columns([1, 2])
+    with col_cat:
+        category = st.selectbox(
+            "Catalog",
+            ["Messier", "Bright Stars", "Astrophotography Favorites", "All"],
+            key="dso_category"
+        )
+    if category == "Messier":
+        dso_list = dso_config.get("messier", [])
+    elif category == "Bright Stars":
+        dso_list = dso_config.get("bright_stars", [])
+    elif category == "Astrophotography Favorites":
+        dso_list = dso_config.get("astrophotography_favorites", [])
+    else:
+        seen = set()
+        dso_list = []
+        for entry in (dso_config.get("messier", []) + dso_config.get("bright_stars", []) + dso_config.get("astrophotography_favorites", [])):
+            if entry["name"] not in seen:
+                seen.add(entry["name"])
+                dso_list.append(entry)
+
+    with col_type:
+        all_types = sorted(set(d.get("type", "Unknown") for d in dso_list))
+        selected_types = st.multiselect("Filter by Type", all_types, default=[], key="dso_type_filter",
+                                        placeholder="All types shown — select to narrow")
+    if selected_types:
+        dso_list = [d for d in dso_list if d.get("type") in selected_types]
+
+    # --- Batch Visibility Table ---
+    if lat is None or lon is None or (lat == 0.0 and lon == 0.0):
+        st.info("Set location in sidebar to see batch visibility for all objects in this catalog.")
+    elif dso_list:
+        dso_tuple = tuple(
+            (d["name"], float(d["ra"]), float(d["dec"]),
+             d.get("type", ""), float(d.get("magnitude", 0) or 0),
+             d.get("common_name", ""))
+            for d in dso_list
+        )
+        df_dsos = get_dso_summary(lat, lon, start_time, dso_tuple)
+
+        if not df_dsos.empty:
+            # Observability check (same pattern as comet/asteroid sections)
+            location_d = EarthLocation(lat=lat * u.deg, lon=lon * u.deg)
+            is_obs_list, reason_list = [], []
+            for _, row in df_dsos.iterrows():
+                try:
+                    sc = SkyCoord(row['RA'], row['Dec'], frame='icrs')
+                    check_times = [
+                        start_time,
+                        start_time + timedelta(minutes=duration / 2),
+                        start_time + timedelta(minutes=duration)
+                    ]
+                    moon_locs_chk = []
+                    if moon_loc:
+                        try:
+                            moon_locs_chk = [get_moon(Time(t), location_d) for t in check_times]
+                        except Exception:
+                            moon_locs_chk = [moon_loc] * 3
+                    obs, reason = False, "Not visible during window"
+                    if str(row.get('Status', '')) == "Never Rises":
+                        reason = "Never Rises"
+                    else:
+                        for i_t, t_chk in enumerate(check_times):
+                            aa = sc.transform_to(AltAz(obstime=Time(t_chk), location=location_d))
+                            if min_alt <= aa.alt.degree <= max_alt and az_range[0] <= aa.az.degree <= az_range[1]:
+                                sep_ok = (not moon_locs_chk) or (sc.separation(moon_locs_chk[i_t]).degree >= min_moon_sep)
+                                if sep_ok:
+                                    obs, reason = True, ""
+                                    break
+                    is_obs_list.append(obs)
+                    reason_list.append(reason)
+                except Exception:
+                    is_obs_list.append(False)
+                    reason_list.append("Parse Error")
+
+            df_dsos["is_observable"] = is_obs_list
+            df_dsos["filter_reason"] = reason_list
+
+            df_obs_d = df_dsos[df_dsos["is_observable"]].copy()
+            df_filt_d = df_dsos[~df_dsos["is_observable"]].copy()
+
+            display_cols_d = ["Name", "Common Name", "Type", "Magnitude", "Constellation",
+                              "Rise", "Transit", "Set", "Moon Status", "Moon Sep (°)", "RA", "Dec", "Status"]
+
+            def display_dso_table(df_in):
+                show = [c for c in display_cols_d if c in df_in.columns]
+                # Sort observable tab by magnitude (brightest first) by default
+                if "Magnitude" in df_in.columns:
+                    df_sorted = df_in[show].sort_values("Magnitude", ascending=True)
+                else:
+                    df_sorted = df_in[show]
+                st.dataframe(df_sorted, hide_index=True, width="stretch")
+
+            tab_obs_d, tab_filt_d = st.tabs([
+                f"🎯 Observable ({len(df_obs_d)})",
+                f"👻 Unobservable ({len(df_filt_d)})"
+            ])
+
+            with tab_obs_d:
+                st.subheader(f"Observable — {category}")
+                plot_visibility_timeline(df_obs_d)
+                st.caption("Sorted by magnitude (brightest first). Use the Gantt chart sort options to reorder by rise/set time.")
+                display_dso_table(df_obs_d)
+
+            with tab_filt_d:
+                st.caption("Objects not meeting your filters (Altitude/Azimuth/Moon) during the observation window.")
+                if not df_filt_d.empty:
+                    filt_show = [c for c in ["Name", "Type", "Magnitude", "filter_reason", "Rise", "Transit", "Set", "Status"] if c in df_filt_d.columns]
+                    st.dataframe(df_filt_d[filt_show], hide_index=True, width="stretch")
+
+            st.download_button(
+                "Download DSO Data (CSV)",
+                data=df_dsos.drop(columns=["is_observable", "filter_reason", "_rise_datetime", "_set_datetime"], errors="ignore").to_csv(index=False).encode("utf-8"),
+                file_name=f"dso_{category.lower().replace(' ', '_')}_visibility.csv",
+                mime="text/csv"
+            )
+
+    # --- Select Target for Trajectory ---
+    st.markdown("---")
+    st.subheader("Select Target for Trajectory")
+    st.caption("Independent from the batch table above — pick any catalog to find your trajectory target.")
+
+    col_tcat, col_ttype = st.columns([1, 2])
+    with col_tcat:
+        traj_category = st.selectbox(
+            "Catalog",
+            ["Messier", "Bright Stars", "Astrophotography Favorites", "All"],
+            key="dso_traj_category"
+        )
+    if traj_category == "Messier":
+        traj_dso_list = dso_config.get("messier", [])
+    elif traj_category == "Bright Stars":
+        traj_dso_list = dso_config.get("bright_stars", [])
+    elif traj_category == "Astrophotography Favorites":
+        traj_dso_list = dso_config.get("astrophotography_favorites", [])
+    else:
+        _seen_t = set()
+        traj_dso_list = []
+        for _entry in (dso_config.get("messier", []) + dso_config.get("bright_stars", []) + dso_config.get("astrophotography_favorites", [])):
+            if _entry["name"] not in _seen_t:
+                _seen_t.add(_entry["name"])
+                traj_dso_list.append(_entry)
+
+    with col_ttype:
+        traj_all_types = sorted(set(d.get("type", "Unknown") for d in traj_dso_list))
+        traj_selected_types = st.multiselect("Filter by Type", traj_all_types, default=[], key="dso_traj_type_filter",
+                                             placeholder="All types shown — select to narrow")
+    if traj_selected_types:
+        traj_dso_list = [d for d in traj_dso_list if d.get("type") in traj_selected_types]
+
+    batch_options = []
+    for d in traj_dso_list:
+        label = d["name"]
+        if d.get("common_name"):
+            label = f"{d['name']} — {d['common_name']}"
+        batch_options.append(label)
+    target_options = batch_options + ["Custom Object..."]
+
+    selected_dso = st.selectbox("Select Object", target_options, key="dso_traj_sel")
+    st.markdown("ℹ️ *Not in the list? Choose 'Custom Object...' to search SIMBAD for any star, galaxy, or nebula.*")
+
+    if selected_dso == "Custom Object...":
+        obj_name_custom = st.text_input("Enter Object Name (e.g., M31, Vega, NGC 891)", value="", key="dso_custom_input")
+        if obj_name_custom:
+            try:
+                with st.spinner(f"Resolving {obj_name_custom} via SIMBAD..."):
+                    name, sky_coord = resolve_simbad(obj_name_custom)
+                st.success(f"✅ Resolved: **{name}** (RA: {sky_coord.ra.to_string(unit=u.hour, sep=':', precision=1)}, Dec: {sky_coord.dec.to_string(sep=':', precision=1)})")
+                resolved = True
+            except Exception as e:
+                st.error(f"Could not resolve object: {e}")
+    elif traj_dso_list:
+        sel_idx = target_options.index(selected_dso)
+        if sel_idx < len(traj_dso_list):
+            dso_entry = traj_dso_list[sel_idx]
+            sky_coord = SkyCoord(ra=float(dso_entry["ra"]) * u.deg, dec=float(dso_entry["dec"]) * u.deg, frame='icrs')
+            name = dso_entry["name"]
+            st.success(
+                f"✅ Selected: **{name}**"
+                + (f" — {dso_entry['common_name']}" if dso_entry.get("common_name") else "")
+                + f" (RA: {sky_coord.ra.to_string(unit=u.hour, sep=':', precision=1)}, Dec: {sky_coord.dec.to_string(sep=':', precision=1)})"
+            )
             resolved = True
-        except Exception as e:
-            st.error(f"Could not resolve object: {e}")
 
 elif target_mode == "Planet (JPL Horizons)":
     planet_map = {

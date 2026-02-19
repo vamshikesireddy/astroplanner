@@ -1,0 +1,177 @@
+# Curated catalog of deep-sky objects, stars, and clusters for batch visibility planning.
+# Sections: messier (M1-M110), bright_stars (top naked-eye stars), astrophotography_favorites (iconic targets).
+# Coordinates are J2000 ICRS in decimal degrees (ra = right ascension, dec = declination).
+# Pre-stored so the batch visibility function does NOT need to call the SIMBAD API.
+
+messier:
+  - {name: "M1",   common_name: "Crab Nebula",             type: "Supernova Remnant",  ra: 83.633,  dec:  22.014, magnitude: 8.4}
+  - {name: "M2",   common_name: "",                         type: "Globular Cluster",   ra: 323.363, dec:  -0.823, magnitude: 6.5}
+  - {name: "M3",   common_name: "",                         type: "Globular Cluster",   ra: 205.548, dec:  28.377, magnitude: 6.2}
+  - {name: "M4",   common_name: "",                         type: "Globular Cluster",   ra: 245.897, dec: -26.526, magnitude: 5.6}
+  - {name: "M5",   common_name: "",                         type: "Globular Cluster",   ra: 229.638, dec:   2.081, magnitude: 5.7}
+  - {name: "M6",   common_name: "Butterfly Cluster",        type: "Open Cluster",       ra: 265.068, dec: -32.218, magnitude: 4.2}
+  - {name: "M7",   common_name: "Ptolemy Cluster",          type: "Open Cluster",       ra: 268.463, dec: -34.793, magnitude: 3.3}
+  - {name: "M8",   common_name: "Lagoon Nebula",            type: "Nebula",             ra: 270.921, dec: -24.380, magnitude: 6.0}
+  - {name: "M9",   common_name: "",                         type: "Globular Cluster",   ra: 259.800, dec: -18.516, magnitude: 7.9}
+  - {name: "M10",  common_name: "",                         type: "Globular Cluster",   ra: 254.288, dec:  -4.100, magnitude: 6.6}
+  - {name: "M11",  common_name: "Wild Duck Cluster",        type: "Open Cluster",       ra: 282.767, dec:  -6.267, magnitude: 6.3}
+  - {name: "M12",  common_name: "",                         type: "Globular Cluster",   ra: 251.809, dec:  -1.949, magnitude: 7.7}
+  - {name: "M13",  common_name: "Great Hercules Cluster",   type: "Globular Cluster",   ra: 250.423, dec:  36.461, magnitude: 5.8}
+  - {name: "M14",  common_name: "",                         type: "Globular Cluster",   ra: 264.401, dec:  -3.246, magnitude: 8.3}
+  - {name: "M15",  common_name: "",                         type: "Globular Cluster",   ra: 322.493, dec:  12.167, magnitude: 6.3}
+  - {name: "M16",  common_name: "Eagle Nebula",             type: "Nebula",             ra: 274.700, dec: -13.806, magnitude: 6.0}
+  - {name: "M17",  common_name: "Omega Nebula",             type: "Nebula",             ra: 275.196, dec: -16.183, magnitude: 6.0}
+  - {name: "M18",  common_name: "",                         type: "Open Cluster",       ra: 274.506, dec: -17.147, magnitude: 7.5}
+  - {name: "M19",  common_name: "",                         type: "Globular Cluster",   ra: 255.659, dec: -26.269, magnitude: 7.1}
+  - {name: "M20",  common_name: "Trifid Nebula",            type: "Nebula",             ra: 270.616, dec: -23.033, magnitude: 8.5}
+  - {name: "M21",  common_name: "",                         type: "Open Cluster",       ra: 272.617, dec: -22.500, magnitude: 6.5}
+  - {name: "M22",  common_name: "",                         type: "Globular Cluster",   ra: 279.100, dec: -23.905, magnitude: 5.2}
+  - {name: "M23",  common_name: "",                         type: "Open Cluster",       ra: 269.283, dec: -19.017, magnitude: 6.9}
+  - {name: "M24",  common_name: "Sagittarius Star Cloud",   type: "Star Cloud",         ra: 274.333, dec: -18.533, magnitude: 4.5}
+  - {name: "M25",  common_name: "",                         type: "Open Cluster",       ra: 277.833, dec: -19.167, magnitude: 4.6}
+  - {name: "M26",  common_name: "",                         type: "Open Cluster",       ra: 281.367, dec:  -9.400, magnitude: 8.0}
+  - {name: "M27",  common_name: "Dumbbell Nebula",          type: "Planetary Nebula",   ra: 299.901, dec:  22.721, magnitude: 7.5}
+  - {name: "M28",  common_name: "",                         type: "Globular Cluster",   ra: 276.134, dec: -24.870, magnitude: 7.7}
+  - {name: "M29",  common_name: "",                         type: "Open Cluster",       ra: 308.400, dec:  38.533, magnitude: 7.1}
+  - {name: "M30",  common_name: "",                         type: "Globular Cluster",   ra: 325.090, dec: -23.180, magnitude: 7.3}
+  - {name: "M31",  common_name: "Andromeda Galaxy",         type: "Galaxy",             ra: 10.685,  dec:  41.269, magnitude: 3.4}
+  - {name: "M32",  common_name: "",                         type: "Galaxy",             ra: 10.674,  dec:  40.866, magnitude: 8.9}
+  - {name: "M33",  common_name: "Triangulum Galaxy",        type: "Galaxy",             ra: 23.463,  dec:  30.660, magnitude: 5.7}
+  - {name: "M34",  common_name: "",                         type: "Open Cluster",       ra: 40.533,  dec:  42.733, magnitude: 5.2}
+  - {name: "M35",  common_name: "",                         type: "Open Cluster",       ra: 92.267,  dec:  24.333, magnitude: 5.1}
+  - {name: "M36",  common_name: "",                         type: "Open Cluster",       ra: 84.058,  dec:  34.133, magnitude: 6.3}
+  - {name: "M37",  common_name: "",                         type: "Open Cluster",       ra: 88.083,  dec:  32.583, magnitude: 6.2}
+  - {name: "M38",  common_name: "",                         type: "Open Cluster",       ra: 82.167,  dec:  35.833, magnitude: 7.4}
+  - {name: "M39",  common_name: "",                         type: "Open Cluster",       ra: 323.400, dec:  48.433, magnitude: 4.6}
+  - {name: "M40",  common_name: "Winnecke 4",               type: "Double Star",        ra: 185.567, dec:  58.083, magnitude: 9.0}
+  - {name: "M41",  common_name: "",                         type: "Open Cluster",       ra: 101.500, dec: -20.750, magnitude: 4.5}
+  - {name: "M42",  common_name: "Orion Nebula",             type: "Nebula",             ra: 83.822,  dec:  -5.391, magnitude: 4.0}
+  - {name: "M43",  common_name: "De Mairan's Nebula",       type: "Nebula",             ra: 83.847,  dec:  -5.267, magnitude: 9.0}
+  - {name: "M44",  common_name: "Beehive Cluster",          type: "Open Cluster",       ra: 130.100, dec:  19.983, magnitude: 3.7}
+  - {name: "M45",  common_name: "Pleiades",                 type: "Open Cluster",       ra: 56.750,  dec:  24.117, magnitude: 1.6}
+  - {name: "M46",  common_name: "",                         type: "Open Cluster",       ra: 115.450, dec: -14.817, magnitude: 6.1}
+  - {name: "M47",  common_name: "",                         type: "Open Cluster",       ra: 114.167, dec: -14.500, magnitude: 5.2}
+  - {name: "M48",  common_name: "",                         type: "Open Cluster",       ra: 123.400, dec:  -5.800, magnitude: 5.8}
+  - {name: "M49",  common_name: "",                         type: "Galaxy",             ra: 187.445, dec:   8.000, magnitude: 9.4}
+  - {name: "M50",  common_name: "",                         type: "Open Cluster",       ra: 105.717, dec:  -8.367, magnitude: 5.9}
+  - {name: "M51",  common_name: "Whirlpool Galaxy",         type: "Galaxy",             ra: 202.470, dec:  47.195, magnitude: 8.4}
+  - {name: "M52",  common_name: "",                         type: "Open Cluster",       ra: 351.200, dec:  61.583, magnitude: 7.3}
+  - {name: "M53",  common_name: "",                         type: "Globular Cluster",   ra: 198.223, dec:  18.168, magnitude: 7.7}
+  - {name: "M54",  common_name: "",                         type: "Globular Cluster",   ra: 283.764, dec: -30.479, magnitude: 7.7}
+  - {name: "M55",  common_name: "",                         type: "Globular Cluster",   ra: 294.997, dec: -30.965, magnitude: 7.0}
+  - {name: "M56",  common_name: "",                         type: "Globular Cluster",   ra: 289.150, dec:  30.183, magnitude: 8.3}
+  - {name: "M57",  common_name: "Ring Nebula",              type: "Planetary Nebula",   ra: 283.396, dec:  33.029, magnitude: 9.7}
+  - {name: "M58",  common_name: "",                         type: "Galaxy",             ra: 189.431, dec:  11.818, magnitude: 10.5}
+  - {name: "M59",  common_name: "",                         type: "Galaxy",             ra: 190.513, dec:  11.647, magnitude: 10.6}
+  - {name: "M60",  common_name: "",                         type: "Galaxy",             ra: 190.917, dec:  11.552, magnitude: 9.8}
+  - {name: "M61",  common_name: "",                         type: "Galaxy",             ra: 184.521, dec:   4.474, magnitude: 9.7}
+  - {name: "M62",  common_name: "",                         type: "Globular Cluster",   ra: 255.303, dec: -30.114, magnitude: 7.4}
+  - {name: "M63",  common_name: "Sunflower Galaxy",         type: "Galaxy",             ra: 198.956, dec:  42.029, magnitude: 9.3}
+  - {name: "M64",  common_name: "Black Eye Galaxy",         type: "Galaxy",             ra: 194.183, dec:  21.682, magnitude: 9.4}
+  - {name: "M65",  common_name: "",                         type: "Galaxy",             ra: 169.733, dec:  13.092, magnitude: 10.3}
+  - {name: "M66",  common_name: "",                         type: "Galaxy",             ra: 170.063, dec:  12.992, magnitude: 9.7}
+  - {name: "M67",  common_name: "",                         type: "Open Cluster",       ra: 132.825, dec:  11.817, magnitude: 6.1}
+  - {name: "M68",  common_name: "",                         type: "Globular Cluster",   ra: 189.867, dec: -26.750, magnitude: 8.3}
+  - {name: "M69",  common_name: "",                         type: "Globular Cluster",   ra: 277.846, dec: -32.349, magnitude: 8.3}
+  - {name: "M70",  common_name: "",                         type: "Globular Cluster",   ra: 279.004, dec: -32.287, magnitude: 8.1}
+  - {name: "M71",  common_name: "",                         type: "Globular Cluster",   ra: 298.444, dec:  18.779, magnitude: 8.3}
+  - {name: "M72",  common_name: "",                         type: "Globular Cluster",   ra: 313.365, dec: -12.537, magnitude: 9.4}
+  - {name: "M73",  common_name: "",                         type: "Asterism",           ra: 314.748, dec: -12.633, magnitude: 9.0}
+  - {name: "M74",  common_name: "Phantom Galaxy",           type: "Galaxy",             ra: 24.174,  dec:  15.783, magnitude: 10.0}
+  - {name: "M75",  common_name: "",                         type: "Globular Cluster",   ra: 301.520, dec: -21.921, magnitude: 8.6}
+  - {name: "M76",  common_name: "Little Dumbbell Nebula",   type: "Planetary Nebula",   ra: 25.578,  dec:  51.575, magnitude: 10.1}
+  - {name: "M77",  common_name: "",                         type: "Galaxy",             ra: 40.669,  dec:  -0.014, magnitude: 9.6}
+  - {name: "M78",  common_name: "",                         type: "Nebula",             ra: 86.692,  dec:   0.078, magnitude: 8.3}
+  - {name: "M79",  common_name: "",                         type: "Globular Cluster",   ra: 81.046,  dec: -24.524, magnitude: 8.0}
+  - {name: "M80",  common_name: "",                         type: "Globular Cluster",   ra: 244.260, dec: -22.975, magnitude: 7.3}
+  - {name: "M81",  common_name: "Bode's Galaxy",            type: "Galaxy",             ra: 148.888, dec:  69.065, magnitude: 7.9}
+  - {name: "M82",  common_name: "Cigar Galaxy",             type: "Galaxy",             ra: 148.969, dec:  69.679, magnitude: 8.4}
+  - {name: "M83",  common_name: "Southern Pinwheel",        type: "Galaxy",             ra: 204.254, dec: -29.866, magnitude: 8.2}
+  - {name: "M84",  common_name: "",                         type: "Galaxy",             ra: 186.266, dec:  12.887, magnitude: 10.1}
+  - {name: "M85",  common_name: "",                         type: "Galaxy",             ra: 186.344, dec:  18.191, magnitude: 9.1}
+  - {name: "M86",  common_name: "",                         type: "Galaxy",             ra: 186.546, dec:  12.947, magnitude: 9.8}
+  - {name: "M87",  common_name: "Virgo A",                  type: "Galaxy",             ra: 187.706, dec:  12.391, magnitude: 9.6}
+  - {name: "M88",  common_name: "",                         type: "Galaxy",             ra: 187.996, dec:  14.420, magnitude: 10.4}
+  - {name: "M89",  common_name: "",                         type: "Galaxy",             ra: 188.916, dec:  12.556, magnitude: 10.7}
+  - {name: "M90",  common_name: "",                         type: "Galaxy",             ra: 188.865, dec:  13.163, magnitude: 10.3}
+  - {name: "M91",  common_name: "",                         type: "Galaxy",             ra: 188.865, dec:  14.498, magnitude: 10.2}
+  - {name: "M92",  common_name: "",                         type: "Globular Cluster",   ra: 259.281, dec:  43.136, magnitude: 6.5}
+  - {name: "M93",  common_name: "",                         type: "Open Cluster",       ra: 116.067, dec: -23.867, magnitude: 6.2}
+  - {name: "M94",  common_name: "",                         type: "Galaxy",             ra: 192.721, dec:  41.120, magnitude: 9.0}
+  - {name: "M95",  common_name: "",                         type: "Galaxy",             ra: 158.549, dec:  11.704, magnitude: 10.4}
+  - {name: "M96",  common_name: "",                         type: "Galaxy",             ra: 159.779, dec:  11.820, magnitude: 10.1}
+  - {name: "M97",  common_name: "Owl Nebula",               type: "Planetary Nebula",   ra: 168.699, dec:  55.019, magnitude: 9.9}
+  - {name: "M98",  common_name: "",                         type: "Galaxy",             ra: 183.450, dec:  14.900, magnitude: 10.9}
+  - {name: "M99",  common_name: "",                         type: "Galaxy",             ra: 184.711, dec:  14.416, magnitude: 10.4}
+  - {name: "M100", common_name: "Grand Design Spiral",      type: "Galaxy",             ra: 185.729, dec:  15.822, magnitude: 10.1}
+  - {name: "M101", common_name: "Pinwheel Galaxy",          type: "Galaxy",             ra: 210.802, dec:  54.349, magnitude: 7.9}
+  - {name: "M102", common_name: "Spindle Galaxy",           type: "Galaxy",             ra: 226.623, dec:  55.766, magnitude: 10.7}
+  - {name: "M103", common_name: "",                         type: "Open Cluster",       ra: 23.338,  dec:  60.650, magnitude: 7.4}
+  - {name: "M104", common_name: "Sombrero Galaxy",          type: "Galaxy",             ra: 189.998, dec: -11.623, magnitude: 9.0}
+  - {name: "M105", common_name: "",                         type: "Galaxy",             ra: 161.956, dec:  12.582, magnitude: 10.2}
+  - {name: "M106", common_name: "",                         type: "Galaxy",             ra: 184.740, dec:  47.304, magnitude: 9.1}
+  - {name: "M107", common_name: "",                         type: "Globular Cluster",   ra: 248.133, dec: -13.054, magnitude: 8.9}
+  - {name: "M108", common_name: "",                         type: "Galaxy",             ra: 167.879, dec:  55.674, magnitude: 10.7}
+  - {name: "M109", common_name: "",                         type: "Galaxy",             ra: 179.398, dec:  53.374, magnitude: 10.6}
+  - {name: "M110", common_name: "",                         type: "Galaxy",             ra: 10.091,  dec:  41.685, magnitude: 8.9}
+
+bright_stars:
+  - {name: "Sirius",       common_name: "alpha CMa", type: "Star", ra: 101.288, dec: -16.716, magnitude: -1.46}
+  - {name: "Canopus",      common_name: "alpha Car", type: "Star", ra:  95.988, dec: -52.696, magnitude: -0.74}
+  - {name: "Arcturus",     common_name: "alpha Boo", type: "Star", ra: 213.915, dec:  19.182, magnitude: -0.05}
+  - {name: "Vega",         common_name: "alpha Lyr", type: "Star", ra: 279.235, dec:  38.784, magnitude:  0.03}
+  - {name: "Capella",      common_name: "alpha Aur", type: "Star", ra:  79.172, dec:  45.998, magnitude:  0.08}
+  - {name: "Rigel",        common_name: "beta Ori",  type: "Star", ra:  78.634, dec:  -8.202, magnitude:  0.13}
+  - {name: "Procyon",      common_name: "alpha CMi", type: "Star", ra: 114.826, dec:   5.228, magnitude:  0.38}
+  - {name: "Achernar",     common_name: "alpha Eri", type: "Star", ra:  24.429, dec: -57.237, magnitude:  0.46}
+  - {name: "Betelgeuse",   common_name: "alpha Ori", type: "Variable Star", ra: 88.793, dec:  7.407, magnitude: 0.58}
+  - {name: "Hadar",        common_name: "beta Cen",  type: "Star", ra: 210.956, dec: -60.373, magnitude:  0.61}
+  - {name: "Acrux",        common_name: "alpha Cru", type: "Star", ra: 186.649, dec: -63.099, magnitude:  0.76}
+  - {name: "Altair",       common_name: "alpha Aql", type: "Star", ra: 297.695, dec:   8.868, magnitude:  0.77}
+  - {name: "Aldebaran",    common_name: "alpha Tau", type: "Variable Star", ra: 68.980, dec: 16.509, magnitude: 0.87}
+  - {name: "Spica",        common_name: "alpha Vir", type: "Star", ra: 201.298, dec: -11.161, magnitude:  0.98}
+  - {name: "Antares",      common_name: "alpha Sco", type: "Variable Star", ra: 247.352, dec: -26.432, magnitude: 1.06}
+  - {name: "Pollux",       common_name: "beta Gem",  type: "Star", ra: 116.329, dec:  28.026, magnitude:  1.15}
+  - {name: "Fomalhaut",    common_name: "alpha PsA", type: "Star", ra: 344.413, dec: -29.622, magnitude:  1.16}
+  - {name: "Deneb",        common_name: "alpha Cyg", type: "Star", ra: 310.358, dec:  45.280, magnitude:  1.25}
+  - {name: "Mimosa",       common_name: "beta Cru",  type: "Star", ra: 191.930, dec: -59.689, magnitude:  1.31}
+  - {name: "Regulus",      common_name: "alpha Leo", type: "Star", ra: 152.093, dec:  11.967, magnitude:  1.35}
+  - {name: "Adhara",       common_name: "eps CMa",   type: "Star", ra: 104.656, dec: -28.972, magnitude:  1.51}
+  - {name: "Castor",       common_name: "alpha Gem", type: "Double Star", ra: 113.650, dec: 31.888, magnitude: 1.58}
+  - {name: "Gacrux",       common_name: "gamma Cru", type: "Star", ra: 187.791, dec: -57.113, magnitude:  1.59}
+  - {name: "Shaula",       common_name: "lambda Sco", type: "Star", ra: 263.402, dec: -37.103, magnitude: 1.62}
+  - {name: "Bellatrix",    common_name: "gamma Ori", type: "Star", ra:  81.283, dec:   6.350, magnitude:  1.64}
+  - {name: "Elnath",       common_name: "beta Tau",  type: "Star", ra:  81.573, dec:  28.608, magnitude:  1.65}
+  - {name: "Miaplacidus",  common_name: "beta Car",  type: "Star", ra: 138.300, dec: -69.717, magnitude:  1.68}
+  - {name: "Alnilam",      common_name: "eps Ori",   type: "Star", ra:  84.053, dec:  -1.202, magnitude:  1.70}
+  - {name: "Alioth",       common_name: "eps UMa",   type: "Star", ra: 193.507, dec:  55.960, magnitude:  1.76}
+  - {name: "Dubhe",        common_name: "alpha UMa", type: "Star", ra: 165.932, dec:  61.751, magnitude:  1.79}
+  - {name: "Mirfak",       common_name: "alpha Per", type: "Star", ra:  51.081, dec:  49.861, magnitude:  1.80}
+  - {name: "Polaris",      common_name: "alpha UMi", type: "Variable Star", ra: 37.952, dec: 89.264, magnitude: 1.98}
+  - {name: "Hamal",        common_name: "alpha Ari", type: "Star", ra:  31.793, dec:  23.462, magnitude:  2.01}
+
+astrophotography_favorites:
+  - {name: "NGC 869",  common_name: "Double Cluster (h Per)",  type: "Open Cluster",     ra:  34.759, dec:  57.133, magnitude: 5.3}
+  - {name: "NGC 884",  common_name: "Double Cluster (chi Per)", type: "Open Cluster",    ra:  35.875, dec:  57.133, magnitude: 6.1}
+  - {name: "NGC 104",  common_name: "47 Tucanae",               type: "Globular Cluster", ra:   6.024, dec: -72.081, magnitude: 4.9}
+  - {name: "NGC 253",  common_name: "Sculptor Galaxy",          type: "Galaxy",           ra:  11.888, dec: -25.288, magnitude: 8.0}
+  - {name: "NGC 891",  common_name: "Edge-On Spiral",           type: "Galaxy",           ra:  35.639, dec:  42.349, magnitude: 10.8}
+  - {name: "NGC 1499", common_name: "California Nebula",        type: "Nebula",           ra:  60.633, dec:  36.417, magnitude: 5.0}
+  - {name: "NGC 2070", common_name: "Tarantula Nebula",         type: "Nebula",           ra:  84.691, dec: -69.101, magnitude: 8.0}
+  - {name: "NGC 2244", common_name: "Rosette Cluster",          type: "Open Cluster",     ra:  97.967, dec:   4.950, magnitude: 4.8}
+  - {name: "NGC 2392", common_name: "Eskimo Nebula",            type: "Planetary Nebula", ra: 112.291, dec:  20.911, magnitude: 10.1}
+  - {name: "NGC 3242", common_name: "Ghost of Jupiter",         type: "Planetary Nebula", ra: 156.020, dec: -18.638, magnitude: 8.6}
+  - {name: "NGC 3372", common_name: "Eta Carinae Nebula",       type: "Nebula",           ra: 160.990, dec: -59.867, magnitude: 1.0}
+  - {name: "NGC 4565", common_name: "Needle Galaxy",            type: "Galaxy",           ra: 189.087, dec:  25.988, magnitude: 10.4}
+  - {name: "NGC 4755", common_name: "Jewel Box",                type: "Open Cluster",     ra: 193.906, dec: -60.348, magnitude: 4.2}
+  - {name: "NGC 5128", common_name: "Centaurus A",              type: "Galaxy",           ra: 201.365, dec: -43.019, magnitude: 7.0}
+  - {name: "NGC 5139", common_name: "Omega Centauri",           type: "Globular Cluster", ra: 201.697, dec: -47.479, magnitude: 5.3}
+  - {name: "NGC 6888", common_name: "Crescent Nebula",          type: "Nebula",           ra: 303.117, dec:  38.350, magnitude: 7.4}
+  - {name: "NGC 6992", common_name: "Eastern Veil Nebula",      type: "Supernova Remnant", ra: 313.583, dec:  31.717, magnitude: 7.0}
+  - {name: "NGC 7000", common_name: "North America Nebula",     type: "Nebula",           ra: 314.783, dec:  44.533, magnitude: 4.0}
+  - {name: "NGC 7293", common_name: "Helix Nebula",             type: "Planetary Nebula", ra: 337.411, dec: -20.837, magnitude: 7.3}
+  - {name: "NGC 7331", common_name: "Deer Lick Galaxy",         type: "Galaxy",           ra: 339.267, dec:  34.416, magnitude: 9.5}
+  - {name: "NGC 7789", common_name: "Caroline's Rose",          type: "Open Cluster",     ra: 359.350, dec:  56.717, magnitude: 6.7}
+  - {name: "IC 1805",  common_name: "Heart Nebula",             type: "Nebula",           ra:  38.175, dec:  61.467, magnitude: 6.5}
+  - {name: "IC 1848",  common_name: "Soul Nebula",              type: "Nebula",           ra:  42.975, dec:  60.450, magnitude: 6.5}
+  - {name: "IC 4628",  common_name: "Prawn Nebula",             type: "Nebula",           ra: 255.883, dec: -40.367, magnitude: 7.9}
