@@ -15,17 +15,14 @@ asteroids:
 - 99942 Apophis
 - 101955 Bennu
 - 2001 SN263
-
+cancelled: []
+priorities: {}
 unistellar_priority:
 - 433 Eros
-- 16 Psyche
 - 1796 Riga
 - 2033 Basilea
 - 2001 FD58
 - 3260 Vizbor
 - name: 99942 Apophis
-  window_start: "2026-01-01"
-  window_end: "2029-04-13"
-
-priorities: {}
-cancelled: []
+  window_end: '2029-04-13'
+  window_start: '2026-01-01'
