@@ -9,7 +9,7 @@ Instead of guessing, you can calculate the exact **Altitude** (height above hori
 
 ## Key Features
 *   **Precise Location & Time:** Automatically detects timezones based on your latitude/longitude.
-*   **Deep Sky Resolver (SIMBAD):** Instantly find coordinates for millions of stars, galaxies, and nebulae.
+*   **Deep Sky Objects (SIMBAD):** Browse the full Messier catalog (110 objects), Bright Stars (33), or Astrophotography Favorites (24 iconic nebulae, clusters, and galaxies) with batch visibility tables, Observable/Unobservable tabs, Gantt timeline, and magnitude-sorted results. Filter by object type. Select any target for a full trajectory, or search SIMBAD for any custom object by name.
 *   **Solar System Objects (JPL Horizons):** Accurate ephemerides for planets, comets, and asteroids.
 *   **Comet Tracking:** Batch visibility for all tracked comets with Observable/Unobservable tabs, Gantt timeline, and ⭐ Priority highlighting sourced from the Unistellar Citizen Science missions page (checked daily). Includes user add-requests (JPL-verified) and an admin approval panel that syncs to GitHub.
 *   **Asteroid Tracking:** Same batch visibility system as comets with Unistellar Planetary Defense priority targets, observation windows for close-approach events (e.g. Apophis 2029), and smart JPL ID resolution for both numbered and provisional designations.
@@ -45,7 +45,7 @@ Instead of guessing, you can calculate the exact **Altitude** (height above hori
 
 ### 3. Choose a Target
 Select one of the six modes:
-*   **🌌 Star/Galaxy/Nebula:** Enter a name (e.g., `M42`, `Vega`).
+*   **🌌 Star/Galaxy/Nebula:** Browse Messier, Bright Stars, or Astrophotography Favorites with batch visibility tables, Gantt timeline, and type filter. The trajectory target picker has its own independent catalog and type selector — change it without affecting the batch table above. Or enter any custom name (SIMBAD lookup).
 *   **🪐 Planet:** View all planets at once — Observable/Unobservable tabs with Gantt timeline, or select one for a full trajectory.
 *   **☄️ Comet:** Batch visibility for all tracked comets. Priority targets from Unistellar missions page are highlighted. Select any comet for a full trajectory + visibility window chart.
 *   **🪨 Asteroid:** Batch visibility for all tracked asteroids. Priority targets from Unistellar Planetary Defense highlighted, with observation windows for close-approach events. Select any asteroid for a full trajectory.
@@ -62,6 +62,7 @@ Select one of the six modes:
 *   `targets.yaml`: Cosmic Cataclysm event priorities, blocklist, and too-faint list.
 *   `comets.yaml`: Comet list, Unistellar priority targets, admin overrides, and cancelled list.
 *   `asteroids.yaml`: Asteroid list, Unistellar Planetary Defense priority targets (with optional observation windows), admin overrides, and cancelled list.
+*   `dso_targets.yaml`: Curated catalog — full Messier catalog (M1–M110), 33 bright stars, and 24 Astrophotography Favorites with pre-stored J2000 coordinates.
 *   `backend/scrape.py`: Selenium scrapers for Unistellar alerts, comet missions page, and asteroid planetary defense page.
 *   `backend/core.py`: Trajectory calculation logic.
 *   `backend/resolvers.py`: Interfaces for SIMBAD and JPL Horizons.
