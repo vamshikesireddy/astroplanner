@@ -36,7 +36,7 @@ except ImportError:
 
 # Import from local modules
 from backend.resolvers import resolve_simbad, resolve_horizons, get_horizons_ephemerides, resolve_planet, get_planet_ephemerides
-from backend.core import compute_trajectory, calculate_planning_info
+from backend.core import compute_trajectory, calculate_planning_info, azimuth_to_compass
 from backend.scrape import scrape_unistellar_table, scrape_unistellar_priority_comets, scrape_unistellar_priority_asteroids
 
 # Suppress Astropy warnings about coordinate frame transformations (Geocentric vs Topocentric)
@@ -89,6 +89,7 @@ def get_planet_summary(lat, lon, start_time):
                 "Name": p_name,
                 "RA": sky_coord.ra.to_string(unit=u.hour, sep=('h ', 'm ', 's'), precision=0, pad=True),
                 "Dec": sky_coord.dec.to_string(sep=('° ', "' ", '"'), precision=0, alwayssign=True, pad=True),
+                "_dec_deg": sky_coord.dec.degree,
                 "Moon Sep (°)": round(moon_sep, 1) if moon_loc else 0,
                 "Moon Status": get_moon_status(moon_illum, moon_sep) if moon_loc else "",
             }
@@ -98,18 +99,51 @@ def get_planet_summary(lat, lon, start_time):
             continue
     return pd.DataFrame(data)
 
-def plot_visibility_timeline(df):
-    """Generates a Gantt-style chart showing Rise to Set times."""
+def plot_visibility_timeline(df, obs_start=None, obs_end=None):
+    """Generates a Gantt-style chart showing Rise to Set times.
+
+    obs_start / obs_end: naive local datetimes for the observation window overlay.
+    When provided, a shaded region + dashed start/end lines are drawn on the chart.
+    """
     # Filter for objects with valid rise/set times
     chart_data = df.dropna(subset=['_rise_datetime', '_set_datetime']).copy()
-    
+
     if chart_data.empty:
         return
 
     # Convert to naive datetime to display "Wall Clock" time on the chart
     chart_data['_rise_naive'] = chart_data['_rise_datetime'].apply(lambda x: x.replace(tzinfo=None) if pd.notnull(x) else None)
     chart_data['_set_naive'] = chart_data['_set_datetime'].apply(lambda x: x.replace(tzinfo=None) if pd.notnull(x) else None)
-    
+    if '_transit_datetime' in chart_data.columns:
+        chart_data['_transit_naive'] = chart_data['_transit_datetime'].apply(lambda x: x.replace(tzinfo=None) if pd.notnull(x) else None)
+        chart_data['transit_time_label'] = chart_data['_transit_naive'].apply(
+            lambda x: x.strftime('%H:%M') if pd.notnull(x) else ''
+        )
+    else:
+        chart_data['_transit_naive'] = None
+        chart_data['transit_time_label'] = ''
+
+    # Clamp "Always Up" (circumpolar) bars to the visible chart window so they
+    # don't stretch the x-axis to a full 24 hours beyond other objects.
+    # If an obs_window is provided, always-up bars span that window exactly.
+    always_up_mask = chart_data['Status'].str.contains('Always Up', na=False)
+    non_always_up = chart_data[~always_up_mask]
+    # Always anchor "Always Up" bars to the full data range of other objects.
+    # The obs window overlay is a separate visual layer and must not shrink these bars.
+    if not non_always_up.empty:
+        x_min = non_always_up['_rise_naive'].min()
+        x_max = non_always_up['_set_naive'].max()
+    elif obs_start is not None and obs_end is not None:
+        # All objects are circumpolar — fall back to the observation window
+        x_min = obs_start
+        x_max = obs_end
+    else:
+        x_min = chart_data['_rise_naive'].min()
+        x_max = x_min + pd.Timedelta(hours=12)
+    if always_up_mask.any():
+        chart_data.loc[always_up_mask, '_rise_naive'] = x_min
+        chart_data.loc[always_up_mask, '_set_naive'] = x_max
+
     # Create label columns: Show "Always Up" for circumpolar objects, otherwise show time
     chart_data['rise_label'] = chart_data.apply(lambda x: "Always Up" if "Always Up" in str(x['Status']) else x['_rise_naive'].strftime('%m-%d %H:%M'), axis=1)
     chart_data['set_label'] = chart_data.apply(lambda x: "" if "Always Up" in str(x['Status']) else x['_set_naive'].strftime('%m-%d %H:%M'), axis=1)
@@ -121,7 +155,7 @@ def plot_visibility_timeline(df):
         horizontal=True,
         label_visibility="collapsed"
     )
-    
+
     if sort_option == "Earliest Rise":
         sort_arg = alt.EncodingSortField(field='_rise_naive', order='ascending')
     elif sort_option == "Earliest Set":
@@ -154,13 +188,78 @@ def plot_visibility_timeline(df):
         x='_set_naive', text=alt.Text('set_label')
     )
 
-    chart = (bars + text_rise + text_set).properties(title="Visibility Window (Rise → Set)", height=chart_height)
+    # Transit notch: white tick mark + time label displayed above the bar (no hover needed)
+    transit_data = chart_data.dropna(subset=['_transit_naive'])
+    transit_layers = []
+    if not transit_data.empty:
+        transit_layers.append(alt.Chart(transit_data).mark_tick(
+            color='white', thickness=2, size=28, opacity=0.9
+        ).encode(
+            x=alt.X('_transit_naive:T'),
+            y=alt.Y('Name:N', sort=sort_arg),
+            tooltip=[alt.Tooltip('Name'), alt.Tooltip('Transit', title='Transit')]
+        ))
+        transit_layers.append(alt.Chart(transit_data).mark_text(
+            color='white', fontSize=9, dy=-20, align='center', fontWeight='bold'
+        ).encode(
+            x=alt.X('_transit_naive:T'),
+            y=alt.Y('Name:N', sort=sort_arg),
+            text=alt.Text('transit_time_label:N')
+        ))
+
+    # Observation window overlay: shaded rect + dashed start/end lines
+    obs_layers = []
+    obs_caption = ""
+    if obs_start is not None and obs_end is not None:
+        # Pre-format labels as strings so Altair shows HH:MM, not just the date
+        obs_df = pd.DataFrame([{
+            "obs_start": obs_start,
+            "obs_end": obs_end,
+            "start_tip": f"Obs Start: {obs_start.strftime('%m-%d %H:%M')}",
+            "end_tip": f"Obs End:   {obs_end.strftime('%m-%d %H:%M')}",
+        }])
+        obs_layers.append(
+            alt.Chart(obs_df).mark_rect(opacity=0.07, color='#ffff66').encode(
+                x=alt.X('obs_start:T'), x2=alt.X2('obs_end:T'),
+                tooltip=[alt.Tooltip('start_tip:N', title=''), alt.Tooltip('end_tip:N', title='')]
+            )
+        )
+        obs_layers.append(
+            alt.Chart(obs_df).mark_rule(color='#00e676', strokeDash=[6, 4], strokeWidth=2, opacity=0.9).encode(
+                x=alt.X('obs_start:T'),
+                tooltip=alt.Tooltip('start_tip:N', title='')
+            )
+        )
+        obs_layers.append(
+            alt.Chart(obs_df).mark_rule(color='#ff5252', strokeDash=[6, 4], strokeWidth=2, opacity=0.9).encode(
+                x=alt.X('obs_end:T'),
+                tooltip=alt.Tooltip('end_tip:N', title='')
+            )
+        )
+        caption_parts = [
+            f"🟩 **{obs_start.strftime('%H:%M')}** = obs start",
+            f"🟥 **{obs_end.strftime('%H:%M')}** = obs end",
+        ]
+        if transit_layers:
+            caption_parts.append("⬜ white tick = transit")
+        caption_parts.append("*(lines update automatically with sidebar settings)*")
+        obs_caption = " &nbsp;|&nbsp; ".join(caption_parts)
+    else:
+        obs_caption = "⬜ white tick = transit" if transit_layers else ""
+
+    # Compose layers: obs_rect first (behind bars), rules last (on top)
+    title_str = "Visibility Window (Rise → Set)" + (" — white tick = transit" if transit_layers else "")
+    layers = obs_layers[:1] + [bars, text_rise, text_set] + transit_layers + obs_layers[1:]
+    chart = alt.layer(*layers).properties(title=title_str, height=chart_height)
 
     if len(chart_data) > 10:
         with st.container(height=500):
-            st.altair_chart(chart, use_container_width=True)
+            st.altair_chart(chart, width='stretch')
     else:
-        st.altair_chart(chart, use_container_width=True)
+        st.altair_chart(chart, width='stretch')
+
+    if obs_caption:
+        st.caption(obs_caption)
 
 
 def _send_github_notification(title, body):
@@ -185,10 +284,24 @@ COMET_ALIASES = {
     "3I/ATLAS": "C/2025 N1 (ATLAS)",
 }
 
+# SPK-ID overrides: comets that must be queried by their JPL SPK-ID (not designation)
+COMET_SPK_IDS = {
+    "240P": "90001202",    # 240P/NEAT Fragment A (primary body)
+    "240P-B": "90001203",  # 240P/NEAT Fragment B
+}
+
 
 def _resolve_comet_alias(name):
     """Returns canonical name (from COMET_ALIASES) and uppercases for comparison."""
     return COMET_ALIASES.get(name, name).upper()
+
+
+def _get_comet_jpl_id(name):
+    """Return the correct JPL Horizons query ID for a comet name.
+    SPK-ID overrides take priority; otherwise strip parenthetical suffix."""
+    if name in COMET_SPK_IDS:
+        return COMET_SPK_IDS[name]
+    return name.split('(')[0].strip()
 
 
 def load_comets_config():
@@ -242,7 +355,7 @@ def get_comet_summary(lat, lon, start_time, comet_tuple):
         moon_illum_inner = 0
     data = []
     for comet_name in comet_tuple:
-        jpl_id = comet_name.split('(')[0].strip()
+        jpl_id = _get_comet_jpl_id(comet_name)
         try:
             _, sky_coord = resolve_horizons(jpl_id, obs_time_str=obs_time_str)
             details = calculate_planning_info(sky_coord, location, start_time)
@@ -251,6 +364,7 @@ def get_comet_summary(lat, lon, start_time, comet_tuple):
                 "Name": comet_name,
                 "RA": sky_coord.ra.to_string(unit=u.hour, sep=('h ', 'm ', 's'), precision=0, pad=True),
                 "Dec": sky_coord.dec.to_string(sep=('° ', "' ", '"'), precision=0, alwayssign=True, pad=True),
+                "_dec_deg": sky_coord.dec.degree,
                 "Moon Sep (°)": round(moon_sep, 1),
                 "Moon Status": get_moon_status(moon_illum_inner, moon_sep) if moon_loc_inner else "",
             }
@@ -360,6 +474,7 @@ def get_asteroid_summary(lat, lon, start_time, asteroid_tuple):
                 "Name": asteroid_name,
                 "RA": sky_coord.ra.to_string(unit=u.hour, sep=('h ', 'm ', 's'), precision=0, pad=True),
                 "Dec": sky_coord.dec.to_string(sep=('° ', "' ", '"'), precision=0, alwayssign=True, pad=True),
+                "_dec_deg": sky_coord.dec.degree,
                 "Moon Sep (°)": round(moon_sep, 1),
                 "Moon Status": get_moon_status(moon_illum_inner, moon_sep) if moon_loc_inner else "",
             }
@@ -424,6 +539,7 @@ def get_dso_summary(lat, lon, start_time, dso_tuple):
                 "Magnitude": magnitude,
                 "RA": sky_coord.ra.to_string(unit=u.hour, sep=('h ', 'm ', 's'), precision=0, pad=True),
                 "Dec": sky_coord.dec.to_string(sep=('° ', "' ", '"'), precision=0, alwayssign=True, pad=True),
+                "_dec_deg": dec_deg,
                 "Moon Sep (°)": round(moon_sep, 1),
                 "Moon Status": get_moon_status(moon_illum_inner, moon_sep) if moon_loc_inner else "",
             }
@@ -495,6 +611,18 @@ def search_address():
         except:
             pass
 
+_GPS_ERROR_MESSAGES = {
+    1: ("Location access was denied by the browser.",
+        "Go to your browser / system Settings → Privacy → Location and allow this site, then reload."),
+    2: ("Your device could not determine its location.",
+        "This can happen in Safari when Location Services are off (Settings → Privacy → Location Services), "
+        "or when the page is served over HTTP instead of HTTPS. "
+        "Try enabling Location Services, then reload — or enter your city/address in the search box above instead."),
+    3: ("Location request timed out.",
+        "The browser took too long to get a GPS fix. "
+        "Try again, or enter your city/address in the search box above instead."),
+}
+
 if get_geolocation:
     if st.sidebar.checkbox("📍 Use Browser GPS"):
         loc = get_geolocation()
@@ -503,12 +631,13 @@ if get_geolocation:
                 st.session_state.lat = loc['coords']['latitude']
                 st.session_state.lon = loc['coords']['longitude']
             else:
-                error = loc.get('error')
-                if isinstance(error, dict) and error.get('code') == 1:
-                    st.sidebar.error("⚠️ Permission Denied. Please allow location access in your browser settings or Type Address to get coordinates.")
-                else:
-                    st.sidebar.error(f"GPS Error: {error}")
-                    st.sidebar.write(loc)
+                error = loc.get('error') or {}
+                code = error.get('code') if isinstance(error, dict) else None
+                title, hint = _GPS_ERROR_MESSAGES.get(
+                    code,
+                    ("GPS is unavailable.", "Try entering your city or coordinates manually using the fields above.")
+                )
+                st.sidebar.warning(f"📍 **{title}**\n\n{hint}")
 else:
     st.sidebar.info("Install `streamlit-js-eval` for GPS support.")
 
@@ -599,8 +728,30 @@ start_time = local_tz.localize(start_time)
 
 # 4. Duration
 st.sidebar.subheader("⏳ Duration")
-duration_options = [60, 120, 180, 240, 300, 360, 480, 600, 720, 840, 960, 1080, 1200, 1320, 1440]
-duration = st.sidebar.selectbox("Minutes", options=duration_options, index=8) # Default 720 (12 hours)
+st.sidebar.caption("Length of your imaging session starting from the time above.")
+
+_duration_options_min = [60, 120, 180, 240, 300, 360, 480, 600, 720, 840, 960, 1080, 1200, 1320, 1440]
+
+# Persist selected index so it survives a format toggle without resetting the value
+if 'dur_idx' not in st.session_state:
+    st.session_state.dur_idx = 8  # default: 720 min = 12 hrs
+
+_dur_fmt = st.sidebar.radio("Display as", ["hrs", "min"], horizontal=True, key="dur_fmt")
+if _dur_fmt == "hrs":
+    _dur_labels = [f"{m // 60} hr" if m // 60 == 1 else f"{m // 60} hrs" for m in _duration_options_min]
+else:
+    _dur_labels = [f"{m} min" for m in _duration_options_min]
+
+_sel_label = st.sidebar.selectbox("Session length", options=_dur_labels,
+                                   index=st.session_state.dur_idx, label_visibility="collapsed")
+_sel_idx = _dur_labels.index(_sel_label)
+st.session_state.dur_idx = _sel_idx
+duration = _duration_options_min[_sel_idx]
+show_obs_window = st.sidebar.checkbox("Show observation window on charts", value=True, key="show_obs_window", help="Draws a shaded region and start/end lines on all Gantt charts matching your selected observation time and duration.")
+
+# Pre-compute naive datetimes for the observation window overlay (used in plot_visibility_timeline)
+obs_start_naive = start_time.replace(tzinfo=None)
+obs_end_naive = (start_time + timedelta(minutes=duration)).replace(tzinfo=None)
 
 # 5. Observational Filters
 st.sidebar.subheader("🔭 Observational Filters")
@@ -608,6 +759,8 @@ st.sidebar.caption("Applies to lists and visibility warnings.")
 alt_range = st.sidebar.slider("Altitude Window (°)", 0, 90, (20, 90), help="Target must be within this altitude range (Min to Max).")
 min_alt, max_alt = alt_range
 az_range = st.sidebar.slider("Azimuth Window (°)", 0, 360, (0, 360), help="Target must be within this compass direction (0=N, 90=E, 180=S, 270=W).")
+dec_range = st.sidebar.slider("Declination Window (°)", -90, 90, (-90, 90), help="Filter targets by declination. Set a range to exclude objects too far north or south for your site.")
+min_dec, max_dec = dec_range
 min_moon_sep = st.sidebar.slider("Min Moon Separation Filter (°)", 0, 180, 0, help="Optional: Hide targets closer than this to the Moon. Default 0 shows all.")
 st.sidebar.markdown("""
 <small>
@@ -631,12 +784,15 @@ if lat is not None and lon is not None:
         
         moon_altaz = moon_loc.transform_to(AltAz(obstime=t_moon, location=location))
         moon_alt = moon_altaz.alt.degree
-        
+        moon_az_deg = moon_altaz.az.degree
+        moon_direction = azimuth_to_compass(moon_az_deg)
+
         st.sidebar.markdown("---")
         st.sidebar.markdown(f"""
         **🌑 Moon Status:**
         *   Illumination: **{moon_illum:.0f}%**
         *   Altitude: **{moon_alt:.0f}°**
+        *   Direction: **{moon_direction}** ({moon_az_deg:.0f}°)
         """)
         st.sidebar.markdown("""
         <small>
@@ -649,6 +805,21 @@ if lat is not None and lon is not None:
         """, unsafe_allow_html=True)
     except Exception:
         pass
+
+# Feedback sidebar
+st.sidebar.markdown("---")
+with st.sidebar.expander("💬 Feedback / Feature Request"):
+    fb_title = st.text_input("Short summary", key="fb_title", placeholder="e.g. Add NGC catalog support")
+    fb_body = st.text_area("Details (optional)", key="fb_body", height=80)
+    if st.button("Submit Feedback", key="btn_feedback"):
+        if fb_title:
+            _send_github_notification(
+                f"💬 User Feedback: {fb_title}",
+                f"**Summary:** {fb_title}\n\n**Details:**\n{fb_body or '(none provided)'}\n\n_Submitted via Astro Planner App_"
+            )
+            st.success("✅ Feedback submitted — thank you!")
+        else:
+            st.warning("Please enter a short summary before submitting.")
 
 # ---------------------------
 # MAIN: Target Selection
@@ -714,6 +885,10 @@ if target_mode == "Star/Galaxy/Nebula (SIMBAD)":
         df_dsos = get_dso_summary(lat, lon, start_time, dso_tuple)
 
         if not df_dsos.empty:
+            # Dec filter
+            if "_dec_deg" in df_dsos.columns and (min_dec > -90 or max_dec < 90):
+                df_dsos = df_dsos[(df_dsos["_dec_deg"] >= min_dec) & (df_dsos["_dec_deg"] <= max_dec)]
+
             # Observability check (same pattern as comet/asteroid sections)
             location_d = EarthLocation(lat=lat * u.deg, lon=lon * u.deg)
             is_obs_list, reason_list = [], []
@@ -773,7 +948,7 @@ if target_mode == "Star/Galaxy/Nebula (SIMBAD)":
 
             with tab_obs_d:
                 st.subheader(f"Observable — {category}")
-                plot_visibility_timeline(df_obs_d)
+                plot_visibility_timeline(df_obs_d, obs_start=obs_start_naive if show_obs_window else None, obs_end=obs_end_naive if show_obs_window else None)
                 st.caption("Sorted by magnitude (brightest first). Use the Gantt chart sort options to reorder by rise/set time.")
                 display_dso_table(df_obs_d)
 
@@ -872,6 +1047,10 @@ elif target_mode == "Planet (JPL Horizons)":
     if lat is not None and lon is not None:
         df_planets = get_planet_summary(lat, lon, start_time)
         if not df_planets.empty:
+            # Dec filter
+            if "_dec_deg" in df_planets.columns and (min_dec > -90 or max_dec < 90):
+                df_planets = df_planets[(df_planets["_dec_deg"] >= min_dec) & (df_planets["_dec_deg"] <= max_dec)]
+
             # --- Filter Planets by Observational Criteria ---
             location = EarthLocation(lat=lat*u.deg, lon=lon*u.deg)
             visible_indices = []
@@ -919,7 +1098,7 @@ elif target_mode == "Planet (JPL Horizons)":
                 st.caption("Visibility for tonight (Filtered by Altitude/Azimuth):")
                 cols = ["Name", "Constellation", "Rise", "Transit", "Set", "Moon Status", "Moon Sep (°)", "RA", "Dec", "Status"]
                 st.dataframe(df_planets_filtered[cols], hide_index=True, width="stretch")
-                plot_visibility_timeline(df_planets_filtered)
+                plot_visibility_timeline(df_planets_filtered, obs_start=obs_start_naive if show_obs_window else None, obs_end=obs_end_naive if show_obs_window else None)
             else:
                 st.warning(f"No planets meet your criteria (Alt [{min_alt}°, {max_alt}°], Az {az_range}, Moon Sep > {min_moon_sep}°) during the selected window.")
     else:
@@ -945,7 +1124,16 @@ elif target_mode == "Planet (JPL Horizons)":
 elif target_mode == "Comet (JPL Horizons)":
     comet_config = load_comets_config()
     active_comets = [c for c in comet_config["comets"] if c not in comet_config.get("cancelled", [])]
-    priority_set = set(comet_config.get("unistellar_priority", []))
+    priority_set = set(
+        e["name"] if isinstance(e, dict) else e
+        for e in comet_config.get("unistellar_priority", [])
+    )
+    comet_priority_windows = {
+        e["name"]: (e.get("window_start", ""), e.get("window_end", ""))
+        for e in comet_config.get("unistellar_priority", [])
+        if isinstance(e, dict) and "window_start" in e
+    }
+    today_str = datetime.now().strftime("%Y-%m-%d")
 
     # Auto-notification: alert admin if any priority comet is missing from list, and check missions page (once per session)
     if 'comet_priority_notified' not in st.session_state:
@@ -1025,8 +1213,18 @@ elif target_mode == "Comet (JPL Horizons)":
                         f"🔍 **{len(new_from_page)} new comet(s)** detected on the Unistellar missions page "
                         f"not yet in the priority list: {', '.join(new_from_page)}. Admin has been notified."
                     )
-            pri_df = pd.DataFrame({"Comet": sorted(priority_set)})
-            st.dataframe(pri_df, hide_index=True, width="stretch")
+            pri_rows_c = []
+            for _c_entry in comet_config.get("unistellar_priority", []):
+                _c_name = _c_entry["name"] if isinstance(_c_entry, dict) else _c_entry
+                _w_start = _c_entry.get("window_start", "") if isinstance(_c_entry, dict) else ""
+                _w_end = _c_entry.get("window_end", "") if isinstance(_c_entry, dict) else ""
+                _window_str = ""
+                if _w_start and _w_end:
+                    _window_str = f"{_w_start} → {_w_end}"
+                    if _w_start <= today_str <= _w_end:
+                        _window_str = f"✅ ACTIVE: {_window_str}"
+                pri_rows_c.append({"Comet": _c_name, "Observation Window": _window_str})
+            st.dataframe(pd.DataFrame(pri_rows_c), hide_index=True, width="stretch")
 
     # Admin panel (sidebar)
     with st.sidebar:
@@ -1117,6 +1315,41 @@ elif target_mode == "Comet (JPL Horizons)":
                 else:
                     st.caption("No priority targets set.")
 
+                st.markdown("---")
+                st.markdown("### Add Priority Target")
+                new_cpri_name = st.text_input("Comet Name", key="new_cpri_add_name", placeholder="e.g. C/2025 X1 (ATLAS)")
+                new_cpri_ws = st.text_input("Window Start (YYYY-MM-DD, optional)", key="new_cpri_ws", placeholder="e.g. 2026-01-01")
+                new_cpri_we = st.text_input("Window End (YYYY-MM-DD, optional)", key="new_cpri_we", placeholder="e.g. 2026-12-31")
+                if st.button("Add to Priority List", key="btn_add_cpri"):
+                    if new_cpri_name:
+                        cfg = load_comets_config()
+                        existing_pri = [e["name"] if isinstance(e, dict) else e for e in cfg["unistellar_priority"]]
+                        if new_cpri_name not in existing_pri:
+                            if new_cpri_ws and new_cpri_we:
+                                cfg["unistellar_priority"].append({"name": new_cpri_name, "window_start": new_cpri_ws, "window_end": new_cpri_we})
+                            else:
+                                cfg["unistellar_priority"].append(new_cpri_name)
+                            save_comets_config(cfg)
+                            st.success(f"Added '{new_cpri_name}' to priority list.")
+                            st.rerun()
+                        else:
+                            st.warning(f"'{new_cpri_name}' is already in the priority list.")
+
+                st.markdown("---")
+                st.markdown("### Add Comet to Tracking List")
+                st.caption("Directly add a comet (bypasses the pending request queue).")
+                new_comet_direct = st.text_input("Comet Designation", key="admin_comet_direct_add", placeholder="e.g. C/2026 A1 (MAPS)")
+                if st.button("Add to List", key="btn_admin_add_comet"):
+                    if new_comet_direct:
+                        cfg = load_comets_config()
+                        if new_comet_direct not in cfg["comets"]:
+                            cfg["comets"].append(new_comet_direct)
+                            save_comets_config(cfg)
+                            st.success(f"Added '{new_comet_direct}' to comets list and pushed to GitHub.")
+                            st.rerun()
+                        else:
+                            st.warning(f"'{new_comet_direct}' is already in the list.")
+
     # Batch visibility table
     if lat is None or lon is None or (lat == 0.0 and lon == 0.0):
         st.info("Set location in sidebar to see visibility summary for all comets.")
@@ -1124,11 +1357,26 @@ elif target_mode == "Comet (JPL Horizons)":
         df_comets = get_comet_summary(lat, lon, start_time, tuple(active_comets))
 
         if not df_comets.empty:
+            # Dec filter
+            if "_dec_deg" in df_comets.columns and (min_dec > -90 or max_dec < 90):
+                df_comets = df_comets[(df_comets["_dec_deg"] >= min_dec) & (df_comets["_dec_deg"] <= max_dec)]
+
             # Priority column: admin override > unistellar priority > empty
             df_comets["Priority"] = df_comets["Name"].apply(
                 lambda n: comet_config["priorities"].get(n,
                     "⭐ PRIORITY" if n in priority_set else "")
             )
+
+            # Observation window column
+            def _comet_window_status(name):
+                if name not in comet_priority_windows:
+                    return ""
+                w_start, w_end = comet_priority_windows[name]
+                if w_start and w_end:
+                    label = f"{w_start} → {w_end}"
+                    return f"✅ ACTIVE: {label}" if w_start <= today_str <= w_end else f"⏳ {label}"
+                return ""
+            df_comets["Window"] = df_comets["Name"].apply(_comet_window_status)
 
             # Observability check (same pattern as planet section)
             location_c = EarthLocation(lat=lat * u.deg, lon=lon * u.deg)
@@ -1171,7 +1419,7 @@ elif target_mode == "Comet (JPL Horizons)":
             df_obs_c = df_comets[df_comets["is_observable"]].copy()
             df_filt_c = df_comets[~df_comets["is_observable"]].copy()
 
-            display_cols_c = ["Name", "Priority", "Constellation", "Rise", "Transit", "Set",
+            display_cols_c = ["Name", "Priority", "Window", "Constellation", "Rise", "Transit", "Set",
                               "Moon Status", "Moon Sep (°)", "RA", "Dec", "Status"]
 
             def display_comet_table(df_in):
@@ -1200,7 +1448,7 @@ elif target_mode == "Comet (JPL Horizons)":
 
             with tab_obs_c:
                 st.subheader("Observable Comets")
-                plot_visibility_timeline(df_obs_c)
+                plot_visibility_timeline(df_obs_c, obs_start=obs_start_naive if show_obs_window else None, obs_end=obs_end_naive if show_obs_window else None)
                 st.markdown(
                     "**Legend:** <span style='background-color: #e3f2fd; color: #0d47a1; "
                     "padding: 2px 6px; border-radius: 4px; font-weight: bold;'>⭐ PRIORITY</span>"
@@ -1230,9 +1478,10 @@ elif target_mode == "Comet (JPL Horizons)":
     st.markdown("ℹ️ *Target not listed? Use 'Custom Comet...' or submit a request above.*")
 
     if selected_target == "Custom Comet...":
-        obj_name = st.text_input("Enter Comet Designation (e.g., C/2020 F3)", value="", key="comet_custom_input")
+        st.caption("Search [JPL Horizons](https://ssd.jpl.nasa.gov/horizons/) to find the comet's exact designation or SPK-ID, then enter it below.")
+        obj_name = st.text_input("Enter Comet Designation or SPK-ID (e.g., C/2020 F3, 90001202)", value="", key="comet_custom_input")
     else:
-        obj_name = selected_target.split('(')[0].strip()
+        obj_name = _get_comet_jpl_id(selected_target)
 
     if obj_name:
         try:
@@ -1428,6 +1677,41 @@ elif target_mode == "Asteroid (JPL Horizons)":
                 else:
                     st.caption("No priority targets set.")
 
+                st.markdown("---")
+                st.markdown("### Add Priority Target")
+                new_apri_name = st.text_input("Asteroid Name", key="new_apri_add_name", placeholder="e.g. 99942 Apophis")
+                new_apri_ws = st.text_input("Window Start (YYYY-MM-DD, optional)", key="new_apri_ws", placeholder="e.g. 2026-01-01")
+                new_apri_we = st.text_input("Window End (YYYY-MM-DD, optional)", key="new_apri_we", placeholder="e.g. 2026-12-31")
+                if st.button("Add to Priority List", key="btn_add_apri"):
+                    if new_apri_name:
+                        cfg = load_asteroids_config()
+                        existing_pri_a = [_asteroid_priority_name(e) for e in cfg["unistellar_priority"]]
+                        if new_apri_name not in existing_pri_a:
+                            if new_apri_ws and new_apri_we:
+                                cfg["unistellar_priority"].append({"name": new_apri_name, "window_start": new_apri_ws, "window_end": new_apri_we})
+                            else:
+                                cfg["unistellar_priority"].append(new_apri_name)
+                            save_asteroids_config(cfg)
+                            st.success(f"Added '{new_apri_name}' to priority list.")
+                            st.rerun()
+                        else:
+                            st.warning(f"'{new_apri_name}' is already in the priority list.")
+
+                st.markdown("---")
+                st.markdown("### Add Asteroid to Tracking List")
+                st.caption("Directly add an asteroid (bypasses the pending request queue).")
+                new_asteroid_direct = st.text_input("Asteroid Designation", key="admin_asteroid_direct_add", placeholder="e.g. 2024 YR4")
+                if st.button("Add to List", key="btn_admin_add_asteroid"):
+                    if new_asteroid_direct:
+                        cfg = load_asteroids_config()
+                        if new_asteroid_direct not in cfg["asteroids"]:
+                            cfg["asteroids"].append(new_asteroid_direct)
+                            save_asteroids_config(cfg)
+                            st.success(f"Added '{new_asteroid_direct}' to asteroids list and pushed to GitHub.")
+                            st.rerun()
+                        else:
+                            st.warning(f"'{new_asteroid_direct}' is already in the list.")
+
     # Batch visibility table
     if lat is None or lon is None or (lat == 0.0 and lon == 0.0):
         st.info("Set location in sidebar to see visibility summary for all asteroids.")
@@ -1435,6 +1719,10 @@ elif target_mode == "Asteroid (JPL Horizons)":
         df_asteroids = get_asteroid_summary(lat, lon, start_time, tuple(active_asteroids))
 
         if not df_asteroids.empty:
+            # Dec filter
+            if "_dec_deg" in df_asteroids.columns and (min_dec > -90 or max_dec < 90):
+                df_asteroids = df_asteroids[(df_asteroids["_dec_deg"] >= min_dec) & (df_asteroids["_dec_deg"] <= max_dec)]
+
             df_asteroids["Priority"] = df_asteroids["Name"].apply(
                 lambda n: asteroid_config["priorities"].get(n,
                     "⭐ PRIORITY" if n in priority_set else "")
@@ -1518,7 +1806,7 @@ elif target_mode == "Asteroid (JPL Horizons)":
 
             with tab_obs_a:
                 st.subheader("Observable Asteroids")
-                plot_visibility_timeline(df_obs_a)
+                plot_visibility_timeline(df_obs_a, obs_start=obs_start_naive if show_obs_window else None, obs_end=obs_end_naive if show_obs_window else None)
                 st.markdown(
                     "**Legend:** <span style='background-color: #e3f2fd; color: #0d47a1; "
                     "padding: 2px 6px; border-radius: 4px; font-weight: bold;'>⭐ PRIORITY</span>"
@@ -1548,7 +1836,8 @@ elif target_mode == "Asteroid (JPL Horizons)":
     st.markdown("ℹ️ *Target not listed? Use 'Custom Asteroid...' or submit a request above. Find the exact designation in the [JPL Small-Body Database](https://ssd.jpl.nasa.gov/tools/sbdb_lookup.html).*")
 
     if selected_target == "Custom Asteroid...":
-        obj_name = st.text_input("Enter Asteroid Name (e.g., Eros, Psyche, 2024 YR4)", value="", key="asteroid_custom_input")
+        st.caption("Search [JPL Small-Body Database](https://ssd.jpl.nasa.gov/tools/sbdb_lookup.html) or [JPL Horizons](https://ssd.jpl.nasa.gov/horizons/) to find the exact designation, then enter it below.")
+        obj_name = st.text_input("Enter Asteroid Name or Designation (e.g., Eros, 2024 YR4, 99942)", value="", key="asteroid_custom_input")
     else:
         obj_name = _asteroid_jpl_id(selected_target)
 
@@ -1754,6 +2043,41 @@ elif target_mode == "Cosmic Cataclysm":
                         save_targets_config(config)
                         st.success(f"Set {p_name} to {p_val}")
 
+                st.markdown("---")
+                st.markdown("### Add Manual Event")
+                st.caption("Add a transient event not on the Unistellar page (e.g. nova, supernova). It will appear in the table alongside scraped targets.")
+                me_name = st.text_input("Event Name", key="cosmic_me_name", placeholder="e.g. Nova Her 2026")
+                me_ra = st.text_input("RA (e.g. 18h 07m 24s)", key="cosmic_me_ra")
+                me_dec = st.text_input("Dec (e.g. +45° 31' 00\")", key="cosmic_me_dec")
+                me_type = st.text_input("Type (optional)", key="cosmic_me_type", placeholder="e.g. Nova")
+                if st.button("Add Manual Event", key="btn_add_manual_event"):
+                    if me_name and me_ra and me_dec:
+                        config = load_targets_config()
+                        config.setdefault("manual_events", [])
+                        existing_names = [e.get("name", "") for e in config["manual_events"]]
+                        if me_name not in existing_names:
+                            config["manual_events"].append({"name": me_name, "ra": me_ra, "dec": me_dec, "type": me_type or "Manual"})
+                            save_targets_config(config)
+                            st.success(f"Added '{me_name}' to manual events and pushed to GitHub.")
+                            st.rerun()
+                        else:
+                            st.warning(f"'{me_name}' already exists in manual events.")
+                    else:
+                        st.warning("Name, RA, and Dec are required.")
+
+                st.markdown("---")
+                st.markdown("### Remove Manual Event")
+                config_me = load_targets_config()
+                manual_events_list = config_me.get("manual_events", [])
+                if manual_events_list:
+                    me_to_remove = st.selectbox("Select event to remove", [e["name"] for e in manual_events_list], key="cosmic_rem_me_sel")
+                    if st.button("Remove Manual Event", key="btn_rem_manual_event"):
+                        config_me["manual_events"] = [e for e in manual_events_list if e["name"] != me_to_remove]
+                        save_targets_config(config_me)
+                        st.rerun()
+                else:
+                    st.caption("No manual events added.")
+
     @st.cache_data(ttl=3600, show_spinner="Scraping data...")
     def get_scraped_data():
         return scrape_unistellar_table()
@@ -1766,7 +2090,16 @@ elif target_mode == "Cosmic Cataclysm":
     else:
         df_alerts = get_scraped_data()
         status_msg.empty()
-    
+
+    # Inject manual events from targets.yaml into df_alerts
+    if df_alerts is not None:
+        _manual_cfg = load_targets_config()
+        _manual_events = _manual_cfg.get("manual_events", [])
+        if _manual_events:
+            _me_rows = [{"Name": e["name"], "RA": e.get("ra", ""), "DEC": e.get("dec", ""), "Type": e.get("type", "Manual")} for e in _manual_events]
+            _me_df = pd.DataFrame(_me_rows)
+            df_alerts = pd.concat([df_alerts, _me_df], ignore_index=True)
+
     if df_alerts is not None and not df_alerts.empty:
         # Try to identify columns dynamically
         df_alerts.columns = df_alerts.columns.str.strip()
@@ -1980,7 +2313,7 @@ elif target_mode == "Cosmic Cataclysm":
             with tab_obs:
                 st.subheader("Available Targets")
                 
-                plot_visibility_timeline(df_obs)
+                plot_visibility_timeline(df_obs, obs_start=obs_start_naive if show_obs_window else None, obs_end=obs_end_naive if show_obs_window else None)
 
                 # Legend
                 st.markdown("""
@@ -2163,7 +2496,7 @@ if st.button("🚀 Calculate Visibility", type="primary", disabled=not resolved)
         planning_info["Name"] = name
         df_plan = pd.DataFrame([planning_info])
         st.subheader("Visibility Window")
-        plot_visibility_timeline(df_plan)
+        plot_visibility_timeline(df_plan, obs_start=obs_start_naive if show_obs_window else None, obs_end=obs_end_naive if show_obs_window else None)
     except Exception:
         pass
 
@@ -2179,7 +2512,7 @@ if st.button("🚀 Calculate Visibility", type="primary", disabled=not resolved)
         tooltip=[alt.Tooltip('Local Time', format='%Y-%m-%d %H:%M'), 'Altitude (°)', 'Azimuth (°)', 'Direction']
     ).interactive()
     
-    st.altair_chart(chart, use_container_width=True)
+    st.altair_chart(chart, width='stretch')
 
     # Data Table
     st.subheader("Detailed Data")

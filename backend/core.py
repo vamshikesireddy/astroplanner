@@ -90,7 +90,7 @@ def calculate_planning_info(sky_coord, location, start_time):
             # For visualization, anchor to start_time to prevent graph skew
             rise_time = start_time
             set_time = start_time + timedelta(hours=24)
-            
+
             return {
                 "Constellation": constellation,
                 "Transit": transit_time.strftime(time_fmt),
@@ -98,23 +98,24 @@ def calculate_planning_info(sky_coord, location, start_time):
                 "Set": "Always Up",
                 "Status": status,
                 "_rise_datetime": rise_time,
-                "_set_datetime": set_time
+                "_set_datetime": set_time,
+                "_transit_datetime": transit_time
             }
         elif cos_h > 1:
             status = "Never Rises"
         else:
             h_rad = math.acos(cos_h)
             h_hours = math.degrees(h_rad) / 15.0
-            
+
             rise_time = transit_time - timedelta(hours=h_hours)
             set_time = transit_time + timedelta(hours=h_hours)
-            
+
             # If the event has already finished before the start time, show the next cycle
             if set_time < start_time:
                 transit_time += timedelta(hours=24)
                 rise_time += timedelta(hours=24)
                 set_time += timedelta(hours=24)
-            
+
             return {
                 "Constellation": constellation,
                 "Transit": transit_time.strftime(time_fmt),
@@ -122,7 +123,8 @@ def calculate_planning_info(sky_coord, location, start_time):
                 "Set": set_time.strftime(time_fmt),
                 "Status": "Visible",
                 "_rise_datetime": rise_time,
-                "_set_datetime": set_time
+                "_set_datetime": set_time,
+                "_transit_datetime": transit_time
             }
             
     except Exception:
@@ -135,5 +137,6 @@ def calculate_planning_info(sky_coord, location, start_time):
         "Set": "---",
         "Status": status if 'status' in locals() else "Error",
         "_rise_datetime": None,
-        "_set_datetime": None
+        "_set_datetime": None,
+        "_transit_datetime": transit_time
     }

@@ -14,9 +14,9 @@ Instead of guessing, you can calculate the exact **Altitude** (height above hori
 *   **Comet Tracking:** Batch visibility for all tracked comets with Observable/Unobservable tabs, Gantt timeline, and ⭐ Priority highlighting sourced from the Unistellar Citizen Science missions page (checked daily). Includes user add-requests (JPL-verified) and an admin approval panel that syncs to GitHub.
 *   **Asteroid Tracking:** Same batch visibility system as comets with Unistellar Planetary Defense priority targets, observation windows for close-approach events (e.g. Apophis 2029), and smart JPL ID resolution for both numbered and provisional designations.
 *   **Cosmic Cataclysms:** Live scraping of transient events (novae, supernovae) from Unistellar alerts. Includes a reporting system to filter out invalid/cancelled events or suggest target priorities.
-*   **Observational Filters:** Filter targets based on Altitude (Min/Max), Azimuth, and Moon Separation.
-*   **Moon Interference:** Automatically calculates Moon phase, separation, and assigns status (Safe/Caution/Avoid) to targets.
-*   **Visibility Charts:** Gantt-style timeline chart (rise → set window per object) + Altitude vs Time trajectory chart for every target mode.
+*   **Observational Filters:** Filter targets based on Altitude (Min/Max), Azimuth, Declination, and Moon Separation.
+*   **Moon Interference:** Automatically calculates Moon phase, separation, and compass direction. Assigns status (Safe/Caution/Avoid) to targets.
+*   **Visibility Charts:** Gantt-style timeline chart (rise → set window per object) with transit time tick + label, and an optional observation window overlay (shaded region + start/end lines) that updates live with your sidebar settings. Circumpolar ("Always Up") objects span the full chart width. Altitude vs Time trajectory chart for every target mode.
 *   **Data Export:** Download trajectory data as CSV for use in telescope mount software.
 
 ## Installation
@@ -38,10 +38,10 @@ Instead of guessing, you can calculate the exact **Altitude** (height above hori
     ```
 
 ### 2. Set Location, Time & Filters (Sidebar)
-*   **Location:** Search for a city, use Browser GPS, or enter coordinates manually.
+*   **Location:** Search for a city, use Browser GPS, or enter coordinates manually. If GPS fails (e.g. Safari with Location Services off), a friendly message explains the cause and suggests the address search as a fallback.
 *   **Time:** Set your observation start date and time.
-*   **Duration:** Choose how long you plan to image.
-*   **Filters:** Set Altitude (Min/Max), Azimuth, and Moon Separation limits to match your viewing site and conditions.
+*   **Duration:** Choose the length of your imaging session. Toggle between **hrs** and **min** display formats — the selected value is preserved when switching formats. The observation window is overlaid on all Gantt charts so you can immediately see which objects are up during your session.
+*   **Filters:** Set Altitude (Min/Max), Azimuth, Declination, and Moon Separation limits to match your viewing site and conditions.
 
 ### 3. Choose a Target
 Select one of the six modes:
