@@ -1,4 +1,5 @@
 import streamlit as st
+import warnings
 import yaml
 import os
 import math
@@ -37,6 +38,9 @@ except ImportError:
 from backend.resolvers import resolve_simbad, resolve_horizons, get_horizons_ephemerides, resolve_planet, get_planet_ephemerides
 from backend.core import compute_trajectory, calculate_planning_info
 from backend.scrape import scrape_unistellar_table
+
+# Suppress Astropy warnings about coordinate frame transformations (Geocentric vs Topocentric)
+warnings.filterwarnings("ignore", message=".*transforming other coordinates.*")
 
 st.set_page_config(page_title="Astro Coordinates", page_icon="🔭", layout="wide", initial_sidebar_state="expanded")
 
@@ -913,22 +917,30 @@ elif target_mode == "Cosmic Cataclysm":
             if dur_col:
                 df_display[dur_col] = df_display[dur_col].astype(str) + " sec"
             
+            # Identify DeepLink column
+            link_col = next((c for c in df_display.columns if 'deeplink' in c.lower().replace(" ", "")), None)
+
             # Reorder columns to put Name and Planning info first
-            priority_cols = [target_col, 'Constellation', 'Rise', 'Transit', 'Set', 'Moon Status', 'Moon Sep (°)']
+            priority_cols = [target_col, 'Constellation', 'Rise', 'Transit', 'Set', 'Moon Status', 'Moon Sep (°)', 'Status']
             
             # Ensure Priority is visible and upfront
             if pri_col and pri_col in df_display.columns:
                 priority_cols.insert(1, pri_col)
 
-            other_cols = [c for c in df_display.columns if c not in priority_cols]
-            df_display = df_display[priority_cols + other_cols]
+            other_cols = [c for c in df_display.columns if c not in priority_cols and c != link_col]
+            
+            final_order = priority_cols + other_cols
+            if link_col:
+                final_order.append(link_col)
+            
+            df_display = df_display[final_order]
 
             # Split Data
             df_obs = df_display[df_display['is_observable'] == True].copy()
             df_filt = df_display[df_display['is_observable'] == False].copy()
             
             # Filter columns for display
-            cols_to_remove_keywords = ['link', 'deeplink', 'exposure', 'cadence', 'gain', 'exp', 'cad']
+            cols_to_remove_keywords = ['exposure', 'cadence', 'gain', 'exp', 'cad']
             actual_cols_to_drop = [
                 col for col in df_display.columns 
                 if any(keyword in col.lower() for keyword in cols_to_remove_keywords) or col in ['is_observable', 'filter_reason']
@@ -939,6 +951,24 @@ elif target_mode == "Cosmic Cataclysm":
             # Helper to style and display
             def display_styled_table(df_in):
                 final_table = df_in.drop(columns=actual_cols_to_drop + hidden_cols, errors='ignore')
+                
+                # Force DeepLink to the very end
+                curr_cols = final_table.columns.tolist()
+                p_cols = [c for c in priority_cols if c in curr_cols]
+                l_cols = [c for c in curr_cols if c == link_col]
+                o_cols = [c for c in curr_cols if c not in p_cols and c not in l_cols]
+                
+                # Order: Priority -> Others -> DeepLink
+                new_order = p_cols + o_cols + l_cols
+                final_table = final_table[new_order]
+                
+                # Configure DeepLink column
+                col_config = {}
+                if link_col and link_col in final_table.columns:
+                    col_config[link_col] = st.column_config.LinkColumn(
+                        "Deep Link", display_text="Open App"
+                    )
+
                 if pri_col and pri_col in final_table.columns:
                     def highlight_row(row):
                         val = str(row[pri_col]).upper().strip()
@@ -948,9 +978,9 @@ elif target_mode == "Cosmic Cataclysm":
                         elif "MEDIUM" in val: style = "background-color: #fff59d; color: black"
                         elif "LOW" in val: style = "background-color: #c8e6c9; color: black"
                         return [style] * len(row)
-                    st.dataframe(final_table.style.apply(highlight_row, axis=1), width="stretch")
+                    st.dataframe(final_table.style.apply(highlight_row, axis=1), width="stretch", column_config=col_config)
                 else:
-                    st.dataframe(final_table, width="stretch")
+                    st.dataframe(final_table, width="stretch", column_config=col_config)
 
             # Tabs
             tab_obs, tab_filt = st.tabs([f"🎯 Observable ({len(df_obs)})", f"👻 Unobservable ({len(df_filt)})"])
@@ -968,6 +998,8 @@ elif target_mode == "Cosmic Cataclysm":
                 <span style='background-color: #fff59d; color: black; padding: 2px 6px; border-radius: 4px;'>MEDIUM</span> 
                 <span style='background-color: #c8e6c9; color: black; padding: 2px 6px; border-radius: 4px;'>LOW</span>
                 """, unsafe_allow_html=True)
+                
+                st.info("ℹ️ **Note:** The 'DeepLink' column is for Unistellar telescopes only. For other equipment, please use the RA/Dec coordinates.")
                 
                 display_styled_table(df_obs)
             
