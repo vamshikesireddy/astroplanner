@@ -126,7 +126,60 @@ The Cosmic Duration column uses `st.column_config.NumberColumn(format="%d sec")`
 
 **Rule:** Never convert a column to string just to add a unit suffix (e.g. `col.astype(str) + " sec"`). That breaks column-header sorting. Always use `column_config` instead.
 
-### 7. Orbit Type Label Mapping (Explore Catalog)
+### 7. Night Plan Builder (Cosmic Cataclysm section)
+
+The Night Plan Builder lives in a collapsible `st.expander` after the Observable / Unobservable tabs. It is **Cosmic-section-only** — other modes do not have it.
+
+#### Two helper functions (module-level, before the Cosmic section)
+
+**`build_night_plan(df_obs, start_time, end_time, pri_col, dur_col) → DataFrame`**
+
+Sorts observable targets URGENT → HIGH → MEDIUM → LOW → unassigned, then by ascending `_set_datetime` within each tier. Slots targets sequentially from `start_time`; breaks when the next target would exceed `end_time`; skips any target whose `_set_datetime` is already past `current_time`. Returns a DataFrame with `Obs Start`, `Obs End`, `_sched_start`, `_sched_end` columns added.
+
+**`generate_plan_pdf(df_plan, night_start, night_end, target_col, link_col, dur_col, pri_col, ra_col, dec_col, vmag_col=None) → bytes | None`**
+
+Requires `reportlab` (in `requirements.txt`). Returns landscape A4 PDF bytes. Re-detects the link column from `df_plan.columns` internally (`'link' in c.lower()`) so it is never lost if the caller passes `link_col=None`. Header row uses `#4472C4` (medium blue) for print readability. Priority rows are colour-coded. The link column renders the raw URL (e.g. `unistellar://science/transient?…`) as plain text so the full deeplink is visible and copyable.
+
+#### Column detection in the Cosmic section
+
+Four optional columns are detected from `df_display` after the main enrichment loop:
+
+```python
+link_col  = next((c for c in df_display.columns if 'link' in c.lower()), None)
+vmag_col  = next((c for c in df_display.columns if 'mag' in c.lower()), None)
+type_col  = next((c for c in df_display.columns if c.lower() in ('type','class','category') or 'event type' in c.lower()), None)
+disc_col  = next((c for c in df_display.columns if 'disc' in c.lower() or ('date' in c.lower() and 'update' not in c.lower())), None)
+```
+
+**Important:** `link_col` matches `"Link"`, `"DeepLink"`, `"Deep Link"` etc. The Unistellar table names this column `"Link"`. Do **not** change the pattern back to `'deeplink'`.
+
+#### Night Plan Builder UI layout
+
+```
+Row 1 — Priority multiselect (full width)
+Row 2 — Refine candidate pool (4 columns):
+         [Magnitude slider] [Event class multiselect] [Discovered last N days slider] [Sets no earlier than time input]
+Row 3 — [🗓 Build Plan (primary)] [📊 All Alerts CSV]
+```
+
+After clicking Build Plan, five sequential filters are applied to `df_obs` before scheduling:
+1. Priority match
+2. Magnitude range (`pd.to_numeric`, unknown magnitudes pass through)
+3. Event class (`isin` match)
+4. Discovery recency (`pd.to_datetime(..., utc=True)` vs cutoff; unknown dates pass through)
+5. Minimum set time (compares `_set_datetime` against a tz-aware datetime; `pd.isnull` targets — Always Up — always pass)
+
+The plan table shows: `Obs Start · Obs End · Name · Priority · Type · Rise · Transit · Set · Duration · Vmag · RA · Dec · Constellation · Moon Sep (°) · Moon Status · Status · Link`.
+
+The link column is configured as `TextColumn` (not `LinkColumn`) so the full `unistellar://` URL is displayed as plain text rather than being hidden or truncated.
+
+Inside the Night Plan Builder, `_plan_link_col` is re-detected directly from `_scheduled.columns` (`'link' in c.lower()`) before building the display table and the PDF — this is the authoritative source, not the outer `link_col` variable.
+
+#### Export formats
+- **CSV** — `_plan_display.to_csv()` (all visible columns, no hidden `_` columns)
+- **PDF** — `generate_plan_pdf(_scheduled, ...)` — passes the full `_scheduled` DataFrame (including hidden cols needed for PDF column detection), with `_plan_link_col` as the link argument
+
+### 8. Orbit Type Label Mapping (Explore Catalog)
 
 ```python
 _ORBIT_TYPE_LABELS = {
@@ -177,6 +230,8 @@ These pipelines are independent. New discoveries do NOT automatically appear in 
 | `get_asteroid_summary()` | `app.py` | Batch asteroid visibility (cached) |
 | `get_dso_summary()` | `app.py` | Batch DSO visibility (cached, no API) |
 | `get_planet_summary()` | `app.py` | Batch planet visibility |
+| `build_night_plan()` | `app.py` | Build sequential night observation schedule |
+| `generate_plan_pdf()` | `app.py` | Render night plan as downloadable PDF |
 | `load_comet_catalog()` | `app.py` | Load comets_catalog.json |
 | `load_comets_config()` | `app.py` | Load + parse comets.yaml |
 | `save_comets_config()` | `app.py` | Save comets.yaml + GitHub push |
