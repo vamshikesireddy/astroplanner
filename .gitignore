@@ -14,6 +14,9 @@ pending_requests.txt
 comet_pending_requests.txt
 asteroid_pending_requests.txt
 
+# Temporary file produced by check_new_comets.py (never committed)
+_new_comets.json
+
 # OS generated files
 .DS_Store
 Thumbs.db

@@ -1,0 +1,37 @@
+name: Update Comet Catalog
+
+on:
+  schedule:
+    - cron: "0 2 * * 0"   # every Sunday at 02:00 UTC
+  workflow_dispatch:        # manual trigger from GitHub Actions tab
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write        # needed to push the updated comets_catalog.json
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: pip install requests
+
+      - name: Download MPC comet catalog
+        run: python scripts/update_comet_catalog.py
+
+      - name: Commit and push if catalog changed
+        run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add comets_catalog.json
+          git diff --cached --quiet && echo "No changes — catalog is up to date." || (
+            git commit -m "chore: update MPC comet catalog [bot]" &&
+            git push
+          )
