@@ -75,7 +75,7 @@ It does **NOT** return `_dec_deg`, `_rise_naive`, `_set_naive`, `_transit_naive`
 
 ### 3. Always Up Objects in Gantt Chart
 
-"Always Up" objects (Status contains "Always Up") are always placed at the **bottom** of the chart for Earliest Set and Earliest Rise sorts, sorted among themselves by transit time ascending. For Natural Order, they stay in their original data position.
+"Always Up" objects (Status contains "Always Up") are always placed at the **bottom** of the chart for Earliest Set and Earliest Rise sorts, sorted among themselves by transit time ascending. For Default Order / Priority Order / Order By Discovery Date, they stay in their original data position.
 
 ```python
 _au_mask = chart_data['Status'].str.contains('Always Up', na=False)
@@ -97,13 +97,40 @@ alt.Chart(transit_data).mark_text(
 )
 ```
 
-### 5. Comet Mode Toggle
+### 5. Gantt Chart Sort Labels and Priority Sorting
+
+`plot_visibility_timeline(df, obs_start, obs_end, default_sort_label, priority_col)` accepts two optional parameters to control the third sort radio button:
+
+| Parameter | Type | Default | Purpose |
+|---|---|---|---|
+| `default_sort_label` | `str` | `"Default Order"` | Label shown for the third sort option |
+| `priority_col` | `str \| None` | `None` | Column name used to rank rows when the third sort is active |
+
+**Per-section sort label assignments:**
+
+| Section | `default_sort_label` | `priority_col` | Behaviour |
+|---|---|---|---|
+| DSO (Stars/Galaxies/Nebulae) | `"Default Order"` | — | Preserves source/watchlist order |
+| Planets | `"Default Order"` | — | Preserves natural planet order |
+| Comets — My List | `"Priority Order"` | `"Priority"` | URGENT → HIGH → LOW → ⭐ PRIORITY → unassigned, then natural order |
+| Comets — Explore Catalog | `"Priority Order"` | — | Preserves catalog order |
+| Asteroids | `"Priority Order"` | `"Priority"` | URGENT → HIGH → LOW → ⭐ PRIORITY → unassigned, then natural order |
+| Cosmic Cataclysm | `"Order By Discovery Date"` | — | Preserves scrape order (Unistellar lists by discovery date) |
+
+When `priority_col` is provided and the third sort is active, rows are ranked:
+- `URGENT` → 0, `HIGH` → 1, `LOW` → 2, any other non-empty value (e.g. `⭐ PRIORITY`) → 3, blank/null → 4
+- Ties broken by original row order (`kind='mergesort'` — stable sort)
+- "Always Up" objects are **not** pushed to the bottom for this sort (they stay in priority-ranked position)
+
+**Priority Legend placement:** Legends appear **below** the dataframe (not between chart and table) so they are visually associated with the table rows, not the Gantt chart. This applies to the Comet, Asteroid, and Cosmic sections.
+
+### 6. Comet Mode Toggle
 
 The Comet section has an internal radio toggle: `"📋 My List"` and `"🔭 Explore Catalog"`. My List is the default. My List code is completely unchanged by the Explore Catalog addition — it is wrapped in `if _comet_view == "📋 My List":`.
 
 `get_comet_summary()` is **reused** by both modes. The Explore Catalog passes filtered designation tuples to it identically to My List.
 
-### 6. Numeric Column Display Formatting
+### 7. Numeric Column Display Formatting
 
 Streamlit renders pandas `float64` columns with full precision by default. Use `st.column_config.NumberColumn` to control the displayed format while keeping the underlying value numeric (so column-header sorting works correctly).
 
@@ -126,7 +153,7 @@ The Cosmic Duration column uses `st.column_config.NumberColumn(format="%d sec")`
 
 **Rule:** Never convert a column to string just to add a unit suffix (e.g. `col.astype(str) + " sec"`). That breaks column-header sorting. Always use `column_config` instead.
 
-### 7. Night Plan Builder (Cosmic Cataclysm section)
+### 8. Night Plan Builder (Cosmic Cataclysm section)
 
 The Night Plan Builder lives in a collapsible `st.expander` after the Observable / Unobservable tabs. It is **Cosmic-section-only** — other modes do not have it.
 
@@ -134,7 +161,7 @@ The Night Plan Builder lives in a collapsible `st.expander` after the Observable
 
 **`build_night_plan(df_obs, start_time, end_time, pri_col, dur_col) → DataFrame`**
 
-Sorts observable targets URGENT → HIGH → MEDIUM → LOW → unassigned, then by ascending `_set_datetime` within each tier. Slots targets sequentially from `start_time`; breaks when the next target would exceed `end_time`; skips any target whose `_set_datetime` is already past `current_time`. Returns a DataFrame with `Obs Start`, `Obs End`, `_sched_start`, `_sched_end` columns added.
+Sorts observable targets URGENT → HIGH → LOW → unassigned, then by ascending `_set_datetime` within each tier. Slots targets sequentially from `start_time`; breaks when the next target would exceed `end_time`; skips any target whose `_set_datetime` is already past `current_time`. Returns a DataFrame with `Obs Start`, `Obs End`, `_sched_start`, `_sched_end` columns added.
 
 **`generate_plan_pdf(df_plan, night_start, night_end, target_col, link_col, dur_col, pri_col, ra_col, dec_col, vmag_col=None) → bytes | None`**
 
@@ -162,6 +189,8 @@ Row 2 — Refine candidate pool (4 columns):
 Row 3 — [🗓 Build Plan (primary)] [📊 All Alerts CSV]
 ```
 
+Priority multiselect options: `["URGENT", "HIGH", "LOW", "(unassigned)"]` — MEDIUM has been removed from assignable priorities. Existing rows with MEDIUM still display with yellow highlighting for backward compatibility.
+
 After clicking Build Plan, five sequential filters are applied to `df_obs` before scheduling:
 1. Priority match
 2. Magnitude range (`pd.to_numeric`, unknown magnitudes pass through)
@@ -179,7 +208,7 @@ Inside the Night Plan Builder, `_plan_link_col` is re-detected directly from `_s
 - **CSV** — `_plan_display.to_csv()` (all visible columns, no hidden `_` columns)
 - **PDF** — `generate_plan_pdf(_scheduled, ...)` — passes the full `_scheduled` DataFrame (including hidden cols needed for PDF column detection), with `_plan_link_col` as the link argument
 
-### 8. Orbit Type Label Mapping (Explore Catalog)
+### 9. Orbit Type Label Mapping (Explore Catalog)
 
 ```python
 _ORBIT_TYPE_LABELS = {

@@ -100,11 +100,17 @@ def get_planet_summary(lat, lon, start_time):
             continue
     return pd.DataFrame(data)
 
-def plot_visibility_timeline(df, obs_start=None, obs_end=None):
+def plot_visibility_timeline(df, obs_start=None, obs_end=None, default_sort_label="Default Order", priority_col=None):
     """Generates a Gantt-style chart showing Rise to Set times.
 
     obs_start / obs_end: naive local datetimes for the observation window overlay.
     When provided, a shaded region + dashed start/end lines are drawn on the chart.
+
+    default_sort_label: label for the third sort radio option (e.g. "Default Order",
+        "Priority Order"). Defaults to "Default Order".
+    priority_col: if provided, the "Priority Order" sort will place rows with a
+        non-empty value in this column first (ranked URGENT > HIGH > LOW > other),
+        then remaining rows in their natural order.
     """
     # Filter for objects with valid rise/set times
     chart_data = df.dropna(subset=['_rise_datetime', '_set_datetime']).copy()
@@ -152,14 +158,15 @@ def plot_visibility_timeline(df, obs_start=None, obs_end=None):
     # Sort Toggle
     sort_option = st.radio(
         "Sort Graph By:",
-        ["Earliest Set", "Earliest Rise", "Natural Order"],
+        ["Earliest Set", "Earliest Rise", default_sort_label],
         horizontal=True,
         label_visibility="collapsed"
     )
 
     # For Earliest Rise / Earliest Set: Always Up objects move to the bottom
     # (sorted by earliest transit), regular objects sort by the chosen criterion.
-    # For List Order: preserve original data order with no special grouping.
+    # For Default/Priority Order: preserve original data order (with optional
+    # priority-column ranking when priority_col is supplied).
     _au_mask = chart_data['Status'].str.contains('Always Up', na=False)
     _au_df = chart_data[_au_mask]
     _reg_df = chart_data[~_au_mask]
@@ -176,8 +183,24 @@ def plot_visibility_timeline(df, obs_start=None, obs_end=None):
     elif sort_option == "Earliest Set":
         _reg_sorted_names = _reg_df.sort_values('_set_naive', ascending=True)['Name'].tolist()
         sort_arg = _reg_sorted_names + _au_sorted_names   # Always Up at bottom
-    else:  # Natural Order — preserve original source/watchlist order unchanged
-        sort_arg = list(chart_data['Name'])
+    else:  # Default Order / Priority Order — preserve source order, optionally rank by priority
+        if priority_col and priority_col in chart_data.columns:
+            _PRI_RANK = {"URGENT": 0, "HIGH": 1, "LOW": 2}
+
+            def _rank_priority(val):
+                v = str(val).upper() if pd.notna(val) else ""
+                for k, r in _PRI_RANK.items():
+                    if k in v:
+                        return r
+                if v.strip():
+                    return 3  # has some priority label (e.g. ⭐ PRIORITY)
+                return 4      # no priority assigned
+
+            _tmp = chart_data.copy()
+            _tmp['_sort_rank'] = _tmp[priority_col].apply(_rank_priority)
+            sort_arg = _tmp.sort_values('_sort_rank', kind='mergesort')['Name'].tolist()
+        else:
+            sort_arg = list(chart_data['Name'])
 
     # Dynamic height: Ensure minimum height to prevent clipping of axis/title
     row_height = 60
@@ -1213,7 +1236,7 @@ if target_mode == "Star/Galaxy/Nebula (SIMBAD)":
 
             with tab_obs_d:
                 st.subheader(f"Observable — {category}")
-                plot_visibility_timeline(df_obs_d, obs_start=obs_start_naive if show_obs_window else None, obs_end=obs_end_naive if show_obs_window else None)
+                plot_visibility_timeline(df_obs_d, obs_start=obs_start_naive if show_obs_window else None, obs_end=obs_end_naive if show_obs_window else None, default_sort_label="Default Order")
                 st.caption("Sorted by magnitude (brightest first). Use the Gantt chart sort options to reorder by rise/set time.")
                 display_dso_table(df_obs_d)
 
@@ -1370,7 +1393,7 @@ elif target_mode == "Planet (JPL Horizons)":
 
             with tab_obs_p:
                 if not df_obs_p.empty:
-                    plot_visibility_timeline(df_obs_p, obs_start=obs_start_naive if show_obs_window else None, obs_end=obs_end_naive if show_obs_window else None)
+                    plot_visibility_timeline(df_obs_p, obs_start=obs_start_naive if show_obs_window else None, obs_end=obs_end_naive if show_obs_window else None, default_sort_label="Default Order")
                     show_p = [c for c in display_cols_p if c in df_obs_p.columns]
                     st.dataframe(df_obs_p[show_p], hide_index=True, width="stretch", column_config=_MOON_SEP_COL_CONFIG)
                 else:
@@ -1565,7 +1588,7 @@ elif target_mode == "Comet (JPL Horizons)":
                                 save_comets_config(cfg)
                                 st.rerun()
                     np_name = st.text_input("Comet Name", key="new_cpri_name")
-                    np_val = st.selectbox("Priority", ["LOW", "MEDIUM", "HIGH", "URGENT"], key="new_cpri_val")
+                    np_val = st.selectbox("Priority", ["LOW", "HIGH", "URGENT"], key="new_cpri_val")
                     if st.button("Set Priority", key="btn_set_cpri"):
                         if np_name:
                             cfg["priorities"][np_name] = np_val
@@ -1736,14 +1759,14 @@ elif target_mode == "Comet (JPL Horizons)":
 
                 with tab_obs_c:
                     st.subheader("Observable Comets")
-                    plot_visibility_timeline(df_obs_c, obs_start=obs_start_naive if show_obs_window else None, obs_end=obs_end_naive if show_obs_window else None)
+                    plot_visibility_timeline(df_obs_c, obs_start=obs_start_naive if show_obs_window else None, obs_end=obs_end_naive if show_obs_window else None, default_sort_label="Priority Order", priority_col="Priority")
+                    display_comet_table(df_obs_c)
                     st.markdown(
                         "**Legend:** <span style='background-color: #e3f2fd; color: #0d47a1; "
                         "padding: 2px 6px; border-radius: 4px; font-weight: bold;'>⭐ PRIORITY</span>"
                         " = Unistellar Citizen Science priority target",
                         unsafe_allow_html=True
                     )
-                    display_comet_table(df_obs_c)
 
                 with tab_filt_c:
                     st.caption("Comets not meeting your filters within the observation window.")
@@ -1924,7 +1947,8 @@ elif target_mode == "Comet (JPL Horizons)":
                             plot_visibility_timeline(
                                 _df_obs_cat,
                                 obs_start=obs_start_naive if show_obs_window else None,
-                                obs_end=obs_end_naive if show_obs_window else None
+                                obs_end=obs_end_naive if show_obs_window else None,
+                                default_sort_label="Priority Order"
                             )
                             st.dataframe(
                                 _df_obs_cat[[c for c in _show_cols_cat if c in _df_obs_cat.columns]],
@@ -2128,7 +2152,7 @@ elif target_mode == "Asteroid (JPL Horizons)":
                             save_asteroids_config(cfg)
                             st.rerun()
                 nap_name = st.text_input("Asteroid Name", key="new_apri_name")
-                nap_val = st.selectbox("Priority", ["LOW", "MEDIUM", "HIGH", "URGENT"], key="new_apri_val")
+                nap_val = st.selectbox("Priority", ["LOW", "HIGH", "URGENT"], key="new_apri_val")
                 if st.button("Set Priority", key="btn_set_apri"):
                     if nap_name:
                         cfg["priorities"][nap_name] = nap_val
@@ -2292,14 +2316,14 @@ elif target_mode == "Asteroid (JPL Horizons)":
 
             with tab_obs_a:
                 st.subheader("Observable Asteroids")
-                plot_visibility_timeline(df_obs_a, obs_start=obs_start_naive if show_obs_window else None, obs_end=obs_end_naive if show_obs_window else None)
+                plot_visibility_timeline(df_obs_a, obs_start=obs_start_naive if show_obs_window else None, obs_end=obs_end_naive if show_obs_window else None, default_sort_label="Priority Order", priority_col="Priority")
+                display_asteroid_table(df_obs_a)
                 st.markdown(
                     "**Legend:** <span style='background-color: #e3f2fd; color: #0d47a1; "
                     "padding: 2px 6px; border-radius: 4px; font-weight: bold;'>⭐ PRIORITY</span>"
                     " = Unistellar Planetary Defense priority target",
                     unsafe_allow_html=True
                 )
-                display_asteroid_table(df_obs_a)
 
             with tab_filt_a:
                 st.caption("Asteroids not meeting your filters within the observation window.")
@@ -2412,7 +2436,7 @@ elif target_mode == "Cosmic Cataclysm":
         with tab_pri:
             c1, c2 = st.columns([2, 1])
             p_name = c1.text_input("Event Name", key="rep_p_name")
-            p_val = c2.selectbox("New Priority", ["LOW", "MEDIUM", "HIGH", "URGENT", "REMOVE"], key="rep_p_val")
+            p_val = c2.selectbox("New Priority", ["LOW", "HIGH", "URGENT", "REMOVE"], key="rep_p_val")
             if st.button("Submit Priority", key="btn_pri"):
                 if p_name:
                     with open(PENDING_FILE, "a") as f:
@@ -2520,7 +2544,7 @@ elif target_mode == "Cosmic Cataclysm":
                 
                 st.caption("Add New Manually:")
                 p_name = st.text_input("Target Name for Priority")
-                p_val = st.selectbox("New Priority", ["LOW", "MEDIUM", "HIGH", "URGENT"])
+                p_val = st.selectbox("New Priority", ["LOW", "HIGH", "URGENT"])
                 if st.button("Update Priority"):
                     if p_name:
                         config = load_targets_config()
@@ -2824,20 +2848,19 @@ elif target_mode == "Cosmic Cataclysm":
             with tab_obs:
                 st.subheader("Available Targets")
                 
-                plot_visibility_timeline(df_obs, obs_start=obs_start_naive if show_obs_window else None, obs_end=obs_end_naive if show_obs_window else None)
+                plot_visibility_timeline(df_obs, obs_start=obs_start_naive if show_obs_window else None, obs_end=obs_end_naive if show_obs_window else None, default_sort_label="Order By Discovery Date")
 
-                # Legend
+                st.info("ℹ️ **Note:** The 'DeepLink' column is for Unistellar telescopes only. For other equipment, please use the RA/Dec coordinates.")
+
+                display_styled_table(df_obs)
+
+                # Legend (below table so it's clear it belongs to the data, not the chart)
                 st.markdown("""
-                **Priority Legend:** 
-                <span style='background-color: #ef5350; color: white; padding: 2px 6px; border-radius: 4px;'>URGENT</span> 
-                <span style='background-color: #ffb74d; color: black; padding: 2px 6px; border-radius: 4px;'>HIGH</span> 
-                <span style='background-color: #fff59d; color: black; padding: 2px 6px; border-radius: 4px;'>MEDIUM</span> 
+                **Priority Legend:**
+                <span style='background-color: #ef5350; color: white; padding: 2px 6px; border-radius: 4px;'>URGENT</span>
+                <span style='background-color: #ffb74d; color: black; padding: 2px 6px; border-radius: 4px;'>HIGH</span>
                 <span style='background-color: #c8e6c9; color: black; padding: 2px 6px; border-radius: 4px;'>LOW</span>
                 """, unsafe_allow_html=True)
-                
-                st.info("ℹ️ **Note:** The 'DeepLink' column is for Unistellar telescopes only. For other equipment, please use the RA/Dec coordinates.")
-                
-                display_styled_table(df_obs)
             
             with tab_filt:
                 st.caption("Targets hidden because they do not meet criteria within the **Observation Window** (Start Time + Duration) selected in the sidebar.")
@@ -2862,7 +2885,7 @@ elif target_mode == "Cosmic Cataclysm":
                     f"**{start_time.strftime('%H:%M')}** to "
                     f"**{_night_end.strftime('%H:%M')}** "
                     f"({duration} min window).  "
-                    f"Targets are sorted **URGENT → HIGH → MEDIUM → LOW → unassigned**, "
+                    f"Targets are sorted **URGENT → HIGH → LOW → unassigned**, "
                     f"then by set-time within each tier (things that set sooner go first).  "
                     f"Targets are slotted back-to-back; the schedule stops when the window is full."
                 )
@@ -2870,8 +2893,8 @@ elif target_mode == "Cosmic Cataclysm":
                 # ── Row 1: priority ────────────────────────────────────────────
                 _sel_pri = st.multiselect(
                     "Include priority levels:",
-                    options=["URGENT", "HIGH", "MEDIUM", "LOW", "(unassigned)"],
-                    default=["URGENT", "HIGH", "MEDIUM", "LOW", "(unassigned)"],
+                    options=["URGENT", "HIGH", "LOW", "(unassigned)"],
+                    default=["URGENT", "HIGH", "LOW", "(unassigned)"],
                     help=(
                         "Deselect a level to exclude those targets.  "
                         "'(unassigned)' catches targets with no priority label."
