@@ -11,3 +11,4 @@ streamlit-searchbox
 astroquery
 PyGithub
 PyYAML
+reportlab
