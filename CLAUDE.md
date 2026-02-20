@@ -103,7 +103,30 @@ The Comet section has an internal radio toggle: `"📋 My List"` and `"🔭 Expl
 
 `get_comet_summary()` is **reused** by both modes. The Explore Catalog passes filtered designation tuples to it identically to My List.
 
-### 6. Orbit Type Label Mapping (Explore Catalog)
+### 6. Numeric Column Display Formatting
+
+Streamlit renders pandas `float64` columns with full precision by default. Use `st.column_config.NumberColumn` to control the displayed format while keeping the underlying value numeric (so column-header sorting works correctly).
+
+A shared config dict is defined at module level near the constants:
+```python
+_MOON_SEP_COL_CONFIG = {
+    "Moon Sep (°)": st.column_config.NumberColumn("Moon Sep (°)", format="%.1f°"),
+}
+```
+
+This is passed as `column_config=_MOON_SEP_COL_CONFIG` to every `st.dataframe` call that shows Moon Sep (DSO, Comet My List, Comet Catalog, Asteroid, Planet, Cosmic observable tables).
+
+For the Cosmic section's `display_styled_table`, it is merged into the existing per-call `col_config`:
+```python
+col_config = dict(_MOON_SEP_COL_CONFIG)   # start with shared defaults
+# then add section-specific entries (DeepLink, Duration)
+```
+
+The Cosmic Duration column uses `st.column_config.NumberColumn(format="%d sec")` added inside `display_styled_table` — it stays numeric, not a string, so sorting works.
+
+**Rule:** Never convert a column to string just to add a unit suffix (e.g. `col.astype(str) + " sec"`). That breaks column-header sorting. Always use `column_config` instead.
+
+### 7. Orbit Type Label Mapping (Explore Catalog)
 
 ```python
 _ORBIT_TYPE_LABELS = {
@@ -199,6 +222,7 @@ GitHub Actions uses the automatic `secrets.GITHUB_TOKEN` — no manual PAT neede
    - Call `plot_visibility_timeline()` in Observable tab
    - Add trajectory picker at bottom
 3. Follow the same tab structure: `st.tabs(["🎯 Observable (N)", "👻 Unobservable (M)"])`
+4. Pass `column_config=_MOON_SEP_COL_CONFIG` to every `st.dataframe` call that shows Moon Sep. For extra numeric columns (e.g. a unit-suffixed value), add them to a copy of the dict: `col_config = dict(_MOON_SEP_COL_CONFIG); col_config["My Col"] = st.column_config.NumberColumn(format="%d units")`
 
 ---
 

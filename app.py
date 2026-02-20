@@ -296,6 +296,11 @@ COMETS_FILE = "comets.yaml"
 COMET_PENDING_FILE = "comet_pending_requests.txt"
 COMET_CATALOG_FILE = "comets_catalog.json"
 
+# Standard column display configs reused across all sections
+_MOON_SEP_COL_CONFIG = {
+    "Moon Sep (°)": st.column_config.NumberColumn("Moon Sep (°)", format="%.1f°"),
+}
+
 # Aliases for comets that appear under alternate designations on external pages
 COMET_ALIASES = {
     "3I/ATLAS": "C/2025 N1 (ATLAS)",
@@ -979,7 +984,7 @@ if target_mode == "Star/Galaxy/Nebula (SIMBAD)":
                     df_sorted = df_in[show].sort_values("Magnitude", ascending=True)
                 else:
                     df_sorted = df_in[show]
-                st.dataframe(df_sorted, hide_index=True, width="stretch")
+                st.dataframe(df_sorted, hide_index=True, width="stretch", column_config=_MOON_SEP_COL_CONFIG)
 
             tab_obs_d, tab_filt_d = st.tabs([
                 f"🎯 Observable ({len(df_obs_d)})",
@@ -1147,7 +1152,7 @@ elif target_mode == "Planet (JPL Horizons)":
                 if not df_obs_p.empty:
                     plot_visibility_timeline(df_obs_p, obs_start=obs_start_naive if show_obs_window else None, obs_end=obs_end_naive if show_obs_window else None)
                     show_p = [c for c in display_cols_p if c in df_obs_p.columns]
-                    st.dataframe(df_obs_p[show_p], hide_index=True, width="stretch")
+                    st.dataframe(df_obs_p[show_p], hide_index=True, width="stretch", column_config=_MOON_SEP_COL_CONFIG)
                 else:
                     st.warning(f"No planets meet your criteria (Alt [{min_alt}°, {max_alt}°], Az {az_range}, Moon Sep > {min_moon_sep}°) during the selected window.")
 
@@ -1502,7 +1507,7 @@ elif target_mode == "Comet (JPL Horizons)":
                             return ["background-color: #e3f2fd; color: #0d47a1; font-weight: bold"] * len(row)
                         return [""] * len(row)
 
-                    st.dataframe(df_in[show].style.apply(hi_comet, axis=1), hide_index=True, width="stretch")
+                    st.dataframe(df_in[show].style.apply(hi_comet, axis=1), hide_index=True, width="stretch", column_config=_MOON_SEP_COL_CONFIG)
 
                 tab_obs_c, tab_filt_c = st.tabs([
                     f"🎯 Observable ({len(df_obs_c)})",
@@ -1703,7 +1708,7 @@ elif target_mode == "Comet (JPL Horizons)":
                             )
                             st.dataframe(
                                 _df_obs_cat[[c for c in _show_cols_cat if c in _df_obs_cat.columns]],
-                                hide_index=True, width="stretch"
+                                hide_index=True, width="stretch", column_config=_MOON_SEP_COL_CONFIG
                             )
                         with _tab_filt_cat:
                             st.caption("Comets not meeting your filters within the observation window.")
@@ -2058,7 +2063,7 @@ elif target_mode == "Asteroid (JPL Horizons)":
                         return ["background-color: #e3f2fd; color: #0d47a1; font-weight: bold"] * len(row)
                     return [""] * len(row)
 
-                st.dataframe(df_in[show].style.apply(hi_asteroid, axis=1), hide_index=True, width="stretch")
+                st.dataframe(df_in[show].style.apply(hi_asteroid, axis=1), hide_index=True, width="stretch", column_config=_MOON_SEP_COL_CONFIG)
 
             tab_obs_a, tab_filt_a = st.tabs([
                 f"🎯 Observable ({len(df_obs_a)})",
@@ -2499,10 +2504,8 @@ elif target_mode == "Cosmic Cataclysm":
             # Create new enriched DataFrame
             df_display = pd.DataFrame(planning_data)
             
-            # Add 'sec' to Duration column
+            # Identify Duration column (keep numeric for correct sort; format applied via column_config)
             dur_col = next((c for c in df_display.columns if 'dur' in c.lower()), None)
-            if dur_col:
-                df_display[dur_col] = df_display[dur_col].astype(str) + " sec"
             
             # Identify DeepLink column
             link_col = next((c for c in df_display.columns if 'deeplink' in c.lower().replace(" ", "")), None)
@@ -2557,11 +2560,15 @@ elif target_mode == "Cosmic Cataclysm":
                 new_order = p_cols + o_cols + l_cols
                 final_table = final_table[new_order]
                 
-                # Configure DeepLink column
-                col_config = {}
+                # Configure columns
+                col_config = dict(_MOON_SEP_COL_CONFIG)
                 if link_col and link_col in final_table.columns:
                     col_config[link_col] = st.column_config.LinkColumn(
                         "Deep Link", display_text="Open App"
+                    )
+                if dur_col and dur_col in final_table.columns:
+                    col_config[dur_col] = st.column_config.NumberColumn(
+                        dur_col, format="%d sec"
                     )
 
                 if pri_col and pri_col in final_table.columns:
