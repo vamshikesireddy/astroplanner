@@ -149,9 +149,16 @@ col_config = dict(_MOON_SEP_COL_CONFIG)   # start with shared defaults
 # then add section-specific entries (DeepLink, Duration)
 ```
 
-The Cosmic Duration column uses `st.column_config.NumberColumn(format="%d sec")` added inside `display_styled_table` — it stays numeric, not a string, so sorting works.
+The Cosmic Duration column is sourced in seconds from the scraper and **converted to minutes** immediately after `df_display` is built:
+```python
+if dur_col and dur_col in df_display.columns:
+    df_display[dur_col] = pd.to_numeric(df_display[dur_col], errors='coerce') / 60
+```
+It is then formatted with `st.column_config.NumberColumn(format="%.1f min")` inside `display_styled_table` — it stays numeric (float), not a string, so sorting works.
 
-**Rule:** Never convert a column to string just to add a unit suffix (e.g. `col.astype(str) + " sec"`). That breaks column-header sorting. Always use `column_config` instead.
+`build_night_plan` reads the Duration column as **minutes** and schedules slots with `timedelta(minutes=dur_min)` (default `5.0` min).
+
+**Rule:** Never convert a column to string just to add a unit suffix (e.g. `col.astype(str) + " min"`). That breaks column-header sorting. Always use `column_config` instead.
 
 ### 8. Night Plan Builder (Cosmic Cataclysm section)
 
@@ -200,7 +207,7 @@ After clicking Build Plan, five sequential filters are applied to `df_obs` befor
 
 The plan table shows: `Obs Start · Obs End · Name · Priority · Type · Rise · Transit · Set · Duration · Vmag · RA · Dec · Constellation · Moon Sep (°) · Moon Status · Status · Link`.
 
-The link column is configured as `TextColumn` (not `LinkColumn`) so the full `unistellar://` URL is displayed as plain text rather than being hidden or truncated.
+The link column is configured as `TextColumn` (not `LinkColumn`) in **both** the observable table (`display_styled_table`) and the Night Plan Builder table. `LinkColumn` only handles `http/https` URLs — using it for `unistellar://` deep links opens a blank page. `TextColumn` displays the full URL as plain text so it is visible and copyable.
 
 Inside the Night Plan Builder, `_plan_link_col` is re-detected directly from `_scheduled.columns` (`'link' in c.lower()`) before building the display table and the PDF — this is the authoritative source, not the outer `link_col` variable.
 
