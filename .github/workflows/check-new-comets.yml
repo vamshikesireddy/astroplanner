@@ -1,0 +1,42 @@
+name: Check for New Comet Discoveries
+
+on:
+  schedule:
+    - cron: "0 6 * * 1"   # Monday  at 06:00 UTC
+    - cron: "0 6 * * 4"   # Thursday at 06:00 UTC
+  workflow_dispatch:        # manual trigger from GitHub Actions tab
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read   # read comets.yaml
+      issues: write    # create GitHub Issues
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: pip install requests pyyaml
+
+      - name: Check JPL SBDB for new comet discoveries
+        id: check
+        run: |
+          python scripts/check_new_comets.py
+          if [ -f "_new_comets.json" ]; then
+            echo "has_new=true" >> $GITHUB_OUTPUT
+          else
+            echo "has_new=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Open GitHub Issues for new comets
+        if: steps.check.outputs.has_new == 'true'
+        run: python scripts/open_comet_issues.py
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

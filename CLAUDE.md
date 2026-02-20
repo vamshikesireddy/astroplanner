@@ -1,0 +1,218 @@
+# CLAUDE.md — Astro Coordinates Planner
+
+Developer guide for Claude (and human contributors) working on this codebase.
+
+---
+
+## Architecture at a Glance
+
+```
+app.py (Streamlit UI + all section logic)
+  ├── backend/core.py          (rise/set/transit calculations)
+  ├── backend/resolvers.py     (SIMBAD + JPL Horizons API calls)
+  └── backend/scrape.py        (Selenium scrapers for Unistellar pages)
+
+scripts/                       (standalone CLI tools run by GitHub Actions)
+  ├── update_comet_catalog.py  (MPC download → comets_catalog.json)
+  ├── check_new_comets.py      (JPL SBDB query → _new_comets.json)
+  └── open_comet_issues.py     (_new_comets.json → GitHub Issues)
+
+Data files (tracked in git):
+  comets.yaml            ← curated watchlist (~24 comets)
+  comets_catalog.json    ← MPC archive snapshot (~865 comets, updated weekly)
+  asteroids.yaml         ← curated watchlist
+  dso_targets.yaml       ← static DSO catalog (Messier + stars + favorites)
+  targets.yaml           ← Cosmic Cataclysm priorities/blocklist
+```
+
+---
+
+## Sections in app.py
+
+Each of the six target modes follows the same structure:
+
+1. **Batch summary** — `get_X_summary()` returns a DataFrame (cached `ttl=3600`)
+2. **Observability check** — loop sets `is_observable` + `filter_reason` per row
+3. **Dec filter** — applied AFTER step 2 (see pattern below)
+4. **Observable / Unobservable tabs** — split by `is_observable` column
+5. **Gantt chart** — `plot_visibility_timeline(df, ...)`
+6. **Trajectory picker** — user selects one object → `resolve_*()` → altitude chart
+
+Sections: DSO (Star/Galaxy/Nebula), Planet, Comet, Asteroid, Cosmic Cataclysm, Manual.
+
+---
+
+## Critical Patterns — Read Before Editing
+
+### 1. Dec Filter (mark-as-unobservable, NOT remove-rows)
+
+The Dec filter marks objects with `is_observable=False` and a reason string. It does NOT delete rows. This ensures objects appear in the Unobservable tab with an explanation rather than silently disappearing.
+
+The filter MUST run AFTER `is_observable` and `filter_reason` columns are already set in the DataFrame.
+
+```python
+if "_dec_deg" in df.columns and (min_dec > -90 or max_dec < 90):
+    _dec_out = ~((df["_dec_deg"] >= min_dec) & (df["_dec_deg"] <= max_dec))
+    df.loc[_dec_out, "is_observable"] = False
+    df.loc[_dec_out, "filter_reason"] = df.loc[_dec_out, "_dec_deg"].apply(
+        lambda d: f"Dec {d:+.1f}° outside filter ({min_dec}° to {max_dec}°)"
+    )
+```
+
+**`_dec_deg` is NOT returned by `calculate_planning_info()`.**
+In sections that loop and call `calculate_planning_info()` (Cosmic, Comet, Asteroid), you must add it manually:
+```python
+row_dict['_dec_deg'] = sc.dec.degree   # sc is a SkyCoord object
+```
+
+### 2. `calculate_planning_info()` Return Values
+
+`backend/core.py: calculate_planning_info(sky_coord, location, start_time)` returns a dict with these keys only:
+- `Rise`, `Set`, `Transit`, `Status`, `Constellation`
+- `_rise_datetime`, `_set_datetime`, `_transit_datetime` (timezone-aware datetimes)
+
+It does **NOT** return `_dec_deg`, `_rise_naive`, `_set_naive`, `_transit_naive` (those are computed downstream).
+
+### 3. Always Up Objects in Gantt Chart
+
+"Always Up" objects (Status contains "Always Up") are always placed at the **bottom** of the chart for Earliest Set and Earliest Rise sorts, sorted among themselves by transit time ascending. For Natural Order, they stay in their original data position.
+
+```python
+_au_mask = chart_data['Status'].str.contains('Always Up', na=False)
+_au_df = chart_data[_au_mask]
+_reg_df = chart_data[~_au_mask]
+# Always Up sorted by transit:
+_au_sorted_names = _au_df.sort_values('_transit_naive', ascending=True)['Name'].tolist()
+# Sorted regular objects first, Always Up appended:
+sort_arg = _reg_sorted_names + _au_sorted_names
+```
+
+### 4. Gantt Chart Transit Labels
+
+Transit time labels use `color='#ffd700'` (gold) with no stroke. Do not change to white (invisible on light theme) or dark colors with white stroke (creates blobs on dark theme).
+
+```python
+alt.Chart(transit_data).mark_text(
+    color='#ffd700', fontSize=9, dy=-20, align='center', fontWeight='bold'
+)
+```
+
+### 5. Comet Mode Toggle
+
+The Comet section has an internal radio toggle: `"📋 My List"` and `"🔭 Explore Catalog"`. My List is the default. My List code is completely unchanged by the Explore Catalog addition — it is wrapped in `if _comet_view == "📋 My List":`.
+
+`get_comet_summary()` is **reused** by both modes. The Explore Catalog passes filtered designation tuples to it identically to My List.
+
+### 6. Orbit Type Label Mapping (Explore Catalog)
+
+```python
+_ORBIT_TYPE_LABELS = {
+    "C": "C — Long-period",
+    "P": "P — Short-period",
+    "I": "I — Interstellar",
+    "D": "D — Defunct / lost",
+    "X": "X — Uncertain orbit",
+    "A": "A — Reclassified asteroid",
+}
+```
+
+In practice, MPC CometEls.json only contains C and P types. The multiselect defaults to both C and P.
+
+---
+
+## Two Comet Data Pipelines
+
+### Pipeline 1 — Explore Catalog (MPC archive)
+- Source: `comets_catalog.json` (generated from MPC CometEls.json)
+- Coverage: Comets with well-determined orbits — effectively up to ~2016
+- Update cadence: Weekly (GitHub Actions, Sunday 02:00 UTC)
+- Use case: Browsing established comets with filters (orbit type, perihelion, magnitude)
+- Position data: Still fetched from JPL Horizons at runtime (positions change daily)
+
+### Pipeline 2 — New Discovery Alerts (JPL SBDB live)
+- Source: JPL SBDB API queried for discoveries in last 30 days
+- Coverage: Newly discovered comets (not yet in MPC archive)
+- Update cadence: Twice weekly (Mon + Thu 06:00 UTC)
+- Use case: Admin notification when a new comet is discovered that isn't on the watchlist
+- Output: GitHub Issues created via REST API; `_new_comets.json` is gitignored
+
+These pipelines are independent. New discoveries do NOT automatically appear in Explore Catalog.
+
+---
+
+## Key Functions Reference
+
+| Function | File | Purpose |
+|---|---|---|
+| `calculate_planning_info()` | `backend/core.py` | Rise/Set/Transit + Status per object |
+| `compute_trajectory()` | `backend/core.py` | Altitude/Az over time range |
+| `resolve_simbad()` | `backend/resolvers.py` | SIMBAD name lookup → SkyCoord |
+| `resolve_horizons()` | `backend/resolvers.py` | JPL Horizons comet/asteroid position |
+| `resolve_planet()` | `backend/resolvers.py` | JPL Horizons planet position |
+| `plot_visibility_timeline()` | `app.py` | Gantt chart (all sections) |
+| `get_comet_summary()` | `app.py` | Batch comet visibility (cached) |
+| `get_asteroid_summary()` | `app.py` | Batch asteroid visibility (cached) |
+| `get_dso_summary()` | `app.py` | Batch DSO visibility (cached, no API) |
+| `get_planet_summary()` | `app.py` | Batch planet visibility |
+| `load_comet_catalog()` | `app.py` | Load comets_catalog.json |
+| `load_comets_config()` | `app.py` | Load + parse comets.yaml |
+| `save_comets_config()` | `app.py` | Save comets.yaml + GitHub push |
+| `_send_github_notification()` | `app.py` | Create GitHub Issue (admin alerts) |
+| `scrape_unistellar_table()` | `backend/scrape.py` | Scrape Cosmic Cataclysm alerts |
+| `scrape_unistellar_priority_comets()` | `backend/scrape.py` | Scrape comet missions page |
+| `scrape_unistellar_priority_asteroids()` | `backend/scrape.py` | Scrape planetary defense page |
+
+---
+
+## Data Files — What Changes and What Doesn't
+
+| File | Changes by | How |
+|---|---|---|
+| `comets.yaml` | Admin panel (app) | `save_comets_config()` + GitHub push |
+| `comets_catalog.json` | GitHub Actions | `update-comet-catalog.yml` (weekly) |
+| `asteroids.yaml` | Admin panel (app) | `save_asteroids_config()` + GitHub push |
+| `targets.yaml` | Admin panel (app) | Direct file write + GitHub push |
+| `dso_targets.yaml` | Manually only | Static, no automated updates |
+| `_new_comets.json` | `check_new_comets.py` | Temp file, gitignored, deleted each run |
+
+---
+
+## Secrets (`.streamlit/secrets.toml` — NOT in git)
+
+```toml
+GITHUB_TOKEN = "ghp_..."          # fine-grained PAT: contents read/write, issues write
+ADMIN_PASSWORD = "..."            # gates all admin panels
+GITHUB_REPO = "vamshikesireddy/astro_coordinates"
+```
+
+GitHub Actions uses the automatic `secrets.GITHUB_TOKEN` — no manual PAT needed for workflows.
+
+---
+
+## Adding a New Section
+
+1. Add `get_X_summary(lat, lon, start_time, ...)` with `@st.cache_data(ttl=3600)`
+2. In the section UI:
+   - Run summary → set `is_observable`, `filter_reason`, `_dec_deg` per row
+   - Apply Dec filter (mark-as-unobservable, after observability is set)
+   - Split into Observable / Unobservable DataFrames
+   - Call `plot_visibility_timeline()` in Observable tab
+   - Add trajectory picker at bottom
+3. Follow the same tab structure: `st.tabs(["🎯 Observable (N)", "👻 Unobservable (M)"])`
+
+---
+
+## Running Locally
+
+```bash
+pip install -r requirements.txt
+streamlit run app.py
+```
+
+Scripts (safe, read-only):
+```bash
+python scripts/update_comet_catalog.py    # downloads MPC catalog → comets_catalog.json
+python scripts/check_new_comets.py        # queries JPL SBDB → _new_comets.json (if new found)
+```
+
+`open_comet_issues.py` requires `GITHUB_TOKEN` and `GITHUB_REPOSITORY` — intended for CI only.

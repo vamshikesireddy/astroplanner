@@ -11,12 +11,15 @@ Instead of guessing, you can calculate the exact **Altitude** (height above hori
 *   **Precise Location & Time:** Automatically detects timezones based on your latitude/longitude.
 *   **Deep Sky Objects (SIMBAD):** Browse the full Messier catalog (110 objects), Bright Stars (33), or Astrophotography Favorites (24 iconic nebulae, clusters, and galaxies) with batch visibility tables, Observable/Unobservable tabs, Gantt timeline, and magnitude-sorted results. Filter by object type. Select any target for a full trajectory, or search SIMBAD for any custom object by name.
 *   **Solar System Objects (JPL Horizons):** Accurate ephemerides for planets, comets, and asteroids.
-*   **Comet Tracking:** Batch visibility for all tracked comets with Observable/Unobservable tabs, Gantt timeline, and ⭐ Priority highlighting sourced from the Unistellar Citizen Science missions page (checked daily). Includes user add-requests (JPL-verified) and an admin approval panel that syncs to GitHub.
+*   **Comet Tracking (My List):** Batch visibility for all tracked comets with Observable/Unobservable tabs, Gantt timeline, and ⭐ Priority highlighting sourced from the Unistellar Citizen Science missions page (checked daily). Includes user add-requests (JPL-verified) and an admin approval panel that syncs to GitHub.
+*   **Comet Catalog (Explore Mode):** Browse the full MPC comet archive (~865 comets) with filters for orbit type (Long-period, Short-period), perihelion window, and estimated magnitude. Narrowed subsets are passed to JPL Horizons for batch visibility — no extra dependencies needed.
+*   **New Comet Discovery Alerts:** A GitHub Actions workflow queries JPL SBDB twice weekly (Monday + Thursday) for comets discovered in the last 30 days. Any comet not already on the watchlist triggers a GitHub Issue for admin review. Deduplication prevents repeated alerts.
 *   **Asteroid Tracking:** Same batch visibility system as comets with Unistellar Planetary Defense priority targets, observation windows for close-approach events (e.g. Apophis 2029), and smart JPL ID resolution for both numbered and provisional designations.
+*   **Planet Visibility:** All 8 planets shown simultaneously with Observable/Unobservable tabs, Gantt timeline, and Dec filter integration. Select any planet for a full trajectory.
 *   **Cosmic Cataclysms:** Live scraping of transient events (novae, supernovae) from Unistellar alerts. Includes a reporting system to filter out invalid/cancelled events or suggest target priorities.
-*   **Observational Filters:** Filter targets based on Altitude (Min/Max), Azimuth, Declination, and Moon Separation.
+*   **Observational Filters:** Filter targets based on Altitude (Min/Max), Azimuth, Declination, and Moon Separation. Declination-filtered objects are marked as Unobservable with a reason (rather than removed), so they remain visible in the Unobservable tab.
 *   **Moon Interference:** Automatically calculates Moon phase, separation, and compass direction. Assigns status (Safe/Caution/Avoid) to targets.
-*   **Visibility Charts:** Gantt-style timeline chart (rise → set window per object) with transit time tick + label, and an optional observation window overlay (shaded region + start/end lines) that updates live with your sidebar settings. Circumpolar ("Always Up") objects span the full chart width. Altitude vs Time trajectory chart for every target mode.
+*   **Visibility Charts:** Gantt-style timeline chart (rise → set window per object) with transit time tick + gold label, and an optional observation window overlay (blue-tinted shaded region). Sort by Earliest Set (default), Earliest Rise, or Natural Order. Circumpolar ("Always Up") objects are grouped at the bottom. Altitude vs Time trajectory chart for every target mode.
 *   **Data Export:** Download trajectory data as CSV for use in telescope mount software.
 
 ## Installation
@@ -46,8 +49,10 @@ Instead of guessing, you can calculate the exact **Altitude** (height above hori
 ### 3. Choose a Target
 Select one of the six modes:
 *   **🌌 Star/Galaxy/Nebula:** Browse Messier, Bright Stars, or Astrophotography Favorites with batch visibility tables, Gantt timeline, and type filter. The trajectory target picker has its own independent catalog and type selector — change it without affecting the batch table above. Or enter any custom name (SIMBAD lookup).
-*   **🪐 Planet:** View all planets at once — Observable/Unobservable tabs with Gantt timeline, or select one for a full trajectory.
-*   **☄️ Comet:** Batch visibility for all tracked comets. Priority targets from Unistellar missions page are highlighted. Select any comet for a full trajectory + visibility window chart.
+*   **🪐 Planet:** View all planets at once — Observable/Unobservable tabs with Gantt timeline and Dec filter — or select one for a full trajectory.
+*   **☄️ Comet:** Two modes via toggle:
+    *   **📋 My List** — Batch visibility for all tracked comets. Priority targets from Unistellar missions page are highlighted. Select any comet for a full trajectory.
+    *   **🔭 Explore Catalog** — Filter the full MPC archive by orbit type, perihelion window, and magnitude. Calculate batch visibility for the filtered subset.
 *   **🪨 Asteroid:** Batch visibility for all tracked asteroids. Priority targets from Unistellar Planetary Defense highlighted, with observation windows for close-approach events. Select any asteroid for a full trajectory.
 *   **💥 Cosmic Cataclysm:** Scrape live alerts for transient events. Use the "Report" feature to flag invalid/cancelled targets or suggest priorities.
 *   **✍️ Manual:** Enter RA/Dec directly.
@@ -60,10 +65,16 @@ Select one of the six modes:
 ## Project Structure
 *   `app.py`: Main Streamlit web application.
 *   `targets.yaml`: Cosmic Cataclysm event priorities, blocklist, and too-faint list.
-*   `comets.yaml`: Comet list, Unistellar priority targets, admin overrides, and cancelled list.
+*   `comets.yaml`: Comet watchlist, Unistellar priority targets, admin overrides, and cancelled list.
+*   `comets_catalog.json`: MPC comet archive snapshot (~865 comets). Auto-updated weekly by GitHub Actions. Used by the Explore Catalog mode.
 *   `asteroids.yaml`: Asteroid list, Unistellar Planetary Defense priority targets (with optional observation windows), admin overrides, and cancelled list.
 *   `dso_targets.yaml`: Curated catalog — full Messier catalog (M1–M110), 33 bright stars, and 24 Astrophotography Favorites with pre-stored J2000 coordinates.
 *   `backend/scrape.py`: Selenium scrapers for Unistellar alerts, comet missions page, and asteroid planetary defense page.
 *   `backend/core.py`: Trajectory calculation logic.
 *   `backend/resolvers.py`: Interfaces for SIMBAD and JPL Horizons.
+*   `scripts/update_comet_catalog.py`: Downloads MPC comet orbital elements and saves to `comets_catalog.json`. Run by the weekly GitHub Actions workflow.
+*   `scripts/check_new_comets.py`: Queries JPL SBDB for comets discovered in the last 30 days and compares against `comets.yaml`. Writes `_new_comets.json` if new comets are found (file is gitignored).
+*   `scripts/open_comet_issues.py`: Reads `_new_comets.json` and creates GitHub Issues via the REST API for admin review. Deduplicates against open issues.
+*   `.github/workflows/update-comet-catalog.yml`: Runs every Sunday at 02:00 UTC — downloads MPC catalog and commits `comets_catalog.json` if changed.
+*   `.github/workflows/check-new-comets.yml`: Runs Monday + Thursday at 06:00 UTC — checks JPL SBDB for newly discovered comets and opens GitHub Issues for any not on the watchlist.
 *   `Dockerfile`: Configuration for containerized deployment.
