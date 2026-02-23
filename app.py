@@ -1485,19 +1485,20 @@ elif target_mode == "Comet (JPL Horizons)":
                     if os.path.exists(COMET_PENDING_FILE):
                         with open(COMET_PENDING_FILE, "r") as f:
                             existing_pending = [l.strip() for l in f if l.strip()]
-                    existing_names = {l.split('|')[0] for l in existing_pending}
+                    existing_names = {l.split('|')[0].strip() for l in existing_pending}
+                    truly_new = [c for c in new_from_page if c not in existing_names]
                     with open(COMET_PENDING_FILE, "a") as f:
-                        for c in new_from_page:
-                            if c not in existing_names:
-                                f.write(f"{c}|Add|Auto-detected from Unistellar missions page\n")
-                    _send_github_notification(
-                        "🔍 Auto-Detected: New Unistellar Priority Comets",
-                        "The following comets were found on the Unistellar missions page "
-                        "but are not in the current priority list:\n\n"
-                        + "\n".join(f"- {c}" for c in new_from_page)
-                        + "\n\nPlease review and update `comets.yaml` if needed.\n\n"
-                        "_Auto-detected by Astro Planner (daily scrape)_"
-                    )
+                        for c in truly_new:
+                            f.write(f"{c}|Add|Auto-detected from Unistellar missions page\n")
+                    if truly_new:
+                        _send_github_notification(
+                            "🔍 Auto-Detected: New Unistellar Priority Comets",
+                            "The following comets were found on the Unistellar missions page "
+                            "but are not in the current priority list:\n\n"
+                            + "\n".join(f"- {c}" for c in truly_new)
+                            + "\n\nPlease review and update `comets.yaml` if needed.\n\n"
+                            "_Auto-detected by Astro Planner (daily scrape)_"
+                        )
 
             st.session_state.comet_priority_notified = True
 
@@ -2059,19 +2060,20 @@ elif target_mode == "Asteroid (JPL Horizons)":
                 if os.path.exists(ASTEROID_PENDING_FILE):
                     with open(ASTEROID_PENDING_FILE, "r") as f:
                         existing_pending = [l.strip() for l in f if l.strip()]
-                existing_names = {l.split('|')[0] for l in existing_pending}
+                existing_names = {l.split('|')[0].strip() for l in existing_pending}
+                truly_new = [a for a in new_from_page if a not in existing_names]
                 with open(ASTEROID_PENDING_FILE, "a") as f:
-                    for a in new_from_page:
-                        if a not in existing_names:
-                            f.write(f"{a}|Add|Auto-detected from Unistellar planetary defense page\n")
-                _send_github_notification(
-                    "🔍 Auto-Detected: New Unistellar Priority Asteroids",
-                    "The following asteroids were found on the Unistellar planetary defense missions page "
-                    "but are not in the current priority list:\n\n"
-                    + "\n".join(f"- {a}" for a in new_from_page)
-                    + "\n\nPlease review and update `asteroids.yaml` if needed.\n\n"
-                    "_Auto-detected by Astro Planner (daily scrape)_"
-                )
+                    for a in truly_new:
+                        f.write(f"{a}|Add|Auto-detected from Unistellar planetary defense page\n")
+                if truly_new:
+                    _send_github_notification(
+                        "🔍 Auto-Detected: New Unistellar Priority Asteroids",
+                        "The following asteroids were found on the Unistellar planetary defense missions page "
+                        "but are not in the current priority list:\n\n"
+                        + "\n".join(f"- {a}" for a in truly_new)
+                        + "\n\nPlease review and update `asteroids.yaml` if needed.\n\n"
+                        "_Auto-detected by Astro Planner (daily scrape)_"
+                    )
         st.session_state.asteroid_priority_notified = True
 
     # User: request an asteroid addition
