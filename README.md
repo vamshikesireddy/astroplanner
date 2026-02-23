@@ -1,4 +1,4 @@
-# 🔭 Astro Coordinates Planner
+# 🔭 AstroPlanner
 
 **Live App:** [https://astro-coordinates.streamlit.app/](https://astro-coordinates.streamlit.app/)
 

@@ -43,7 +43,7 @@ from backend.scrape import scrape_unistellar_table, scrape_unistellar_priority_c
 # Suppress Astropy warnings about coordinate frame transformations (Geocentric vs Topocentric)
 warnings.filterwarnings("ignore", message=".*transforming other coordinates.*")
 
-st.set_page_config(page_title="Astro Coordinates", page_icon="🔭", layout="wide", initial_sidebar_state="expanded")
+st.set_page_config(page_title="AstroPlanner", page_icon="🔭", layout="wide", initial_sidebar_state="expanded")
 
 def get_moon_status(illumination, separation):
     if illumination < 15:
@@ -847,7 +847,7 @@ hide_st_style = """
             """
 st.markdown(hide_st_style, unsafe_allow_html=True)
 
-st.title("🔭 Astro Coordinates Planner")
+st.title("🔭 AstroPlanner")
 st.markdown("Plan your astrophotography sessions with visibility predictions.")
 
 with st.expander("ℹ️ How to Use"):
