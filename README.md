@@ -1,6 +1,6 @@
 # 🔭 AstroPlanner
 
-**Live App:** [https://astro-coordinates.streamlit.app/](https://astro-coordinates.streamlit.app/)
+**Live App:** [https://astroplanner.streamlit.app/](https://astroplanner.streamlit.app/)
 
 ## Overview
 The **Astro Coordinates Planner** is a web application designed for astrophotographers and astronomers. It helps you determine **if** and **when** a specific celestial object will be visible from your location tonight.
@@ -18,10 +18,10 @@ Instead of guessing, you can calculate the exact **Altitude** (height above hori
 *   **Planet Visibility:** All 8 planets shown simultaneously with Observable/Unobservable tabs, Gantt timeline, and Dec filter integration. Select any planet for a full trajectory.
 *   **Cosmic Cataclysms:** Live scraping of transient events (novae, supernovae, GRBs, variable stars) from Unistellar alerts. Includes a reporting system to filter out invalid/cancelled events or suggest target priorities. Features a **Night Plan Builder** that generates an optimized, sequential observation schedule for the night — see below.
 *   **Observational Filters:** Filter targets based on Altitude (Min/Max), Azimuth, Declination, and Moon Separation. Declination-filtered objects are marked as Unobservable with a reason (rather than removed), so they remain visible in the Unobservable tab.
-*   **Moon Interference:** Automatically calculates Moon phase, separation, and compass direction. Assigns status (Safe/Caution/Avoid) to targets.
+*   **Moon Separation:** Every overview table (DSO, Planet, Comet, Asteroid, Cosmic) shows a **Moon Sep (°)** column with the angular separation range across the observation window (`min°–max°`), computed at start, mid, and end of the window. A caption below each table explains the range format. Moon Sep range is included in all CSV exports. Moon Status (Safe/Caution/Avoid) is used internally for the sidebar filter but not shown in tables. The individual **trajectory Detailed Data table** shows the exact Moon Sep angle at every 10-minute step, and the "Moon Sep" summary metric shows the min–max range across the full trajectory.
 *   **Visibility Charts:** Gantt-style timeline chart (rise → set window per object) with transit time tick + gold label, and an optional observation window overlay (blue-tinted shaded region). Sort by Earliest Set (default), Earliest Rise, or Natural Order. Circumpolar ("Always Up") objects are grouped at the bottom. Altitude vs Time trajectory chart for every target mode.
 *   **Night Plan Builder (Cosmic Cataclysm):** After filtering observable transients, opens a collapsible planner that builds a back-to-back observation schedule optimized for the session window. Priority order: URGENT → HIGH → MEDIUM → LOW → unassigned; secondary sort by set-time (targets that set soonest go first). Additional candidate filters: magnitude range, event class (SN / GRB / VS / …), discovery recency (last N days), and minimum set time. Displays metrics (targets planned, scheduled time, remaining window) and exports the plan as **CSV** or **PDF**. The PDF is landscape A4, priority-colour-coded, and includes the full `unistellar://` deeplink URL for each target — designed to be loaded on a tablet before connecting the telescope to WiFi.
-*   **Data Export:** Download trajectory data as CSV for use in telescope mount software.
+*   **Data Export:** Download trajectory data as CSV (includes Moon Sep per 10-min step) or overview tables as CSV (includes Moon Sep range). Night Plan PDF includes the Moon Sep range column.
 
 ## Installation
 

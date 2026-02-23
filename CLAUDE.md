@@ -134,7 +134,7 @@ The Comet section has an internal radio toggle: `"📋 My List"` and `"🔭 Expl
 
 Streamlit renders pandas `float64` columns with full precision by default. Use `st.column_config.NumberColumn` to control the displayed format while keeping the underlying value numeric (so column-header sorting works correctly).
 
-`_MOON_SEP_COL_CONFIG` is still defined at module level but **Moon Sep (°) and Moon Status are no longer shown in any overview table or CSV download**. The dict is retained for backward compatibility but is effectively unused by display code.
+`_MOON_SEP_COL_CONFIG` is defined at module level as a `TextColumn` (not `NumberColumn`) and is passed to all overview table `st.dataframe()` calls. It formats the `Moon Sep (°)` range string. `Moon Status` is intentionally excluded from all display code.
 
 The Cosmic Duration column is sourced in seconds from the scraper and **converted to minutes** immediately after `df_display` is built:
 ```python
@@ -149,18 +149,32 @@ It is formatted with `st.column_config.NumberColumn(format="%d min")` inside `di
 
 ### 7a. Moon Separation — How It Works
 
-Moon Sep and Moon Status are **computed internally** in every observability loop but are **not shown** in overview tables or included in CSV/PDF downloads.
+Moon Sep is **shown** in all overview tables as a range string and in CSV exports. Moon Status is computed internally (for the sidebar filter) but is **not shown** in any table or export.
 
-**Calculation:** `Moon Sep (°)` = minimum angular separation across 3 check times (start / mid / end of the observation window). This is the worst-case proximity during the night, which is what matters for planning. Single-snapshot-at-start-time values were removed because a target rising at 2 AM would show its moon sep from sunset — up to 7+ hours stale.
+**Overview table calculation** — `Moon Sep (°)` column stores a `"min°–max°"` range string:
 
 ```python
-_min_sep = min(sc.separation(ml).degree for ml in moon_locs_chk) if moon_locs_chk \
-           else (sc.separation(moon_loc).degree if moon_loc else 0.0)
+_seps = [sc.separation(ml).degree for ml in moon_locs_chk] if moon_locs_chk else []
+_min_sep = min(_seps) if _seps else (sc.separation(moon_loc).degree if moon_loc else 0.0)
+_max_sep = max(_seps) if _seps else _min_sep
+moon_sep_list.append(f"{_min_sep:.1f}°–{_max_sep:.1f}°" if moon_loc else "–")
 ```
 
-**Where Moon Sep still appears:**
-- The **"Min Moon Sep" sidebar filter** (slider) uses the per-row min sep to hide objects below the threshold — this still works correctly.
-- The **individual trajectory view** shows a `Moon Sep` summary metric and a warning if the target is closer than the slider limit. These use a single-point `sky_coord.separation(moon_loc).degree` calculation, not per-row columns.
+Three check times: start / mid / end of the observation window. `_min_sep` (worst case) is still used for `get_moon_status()` classification and the sidebar filter check. The range string is stored in the `Moon Sep (°)` column and formatted via `_MOON_SEP_COL_CONFIG` (a `TextColumn` — not a `NumberColumn`, because sorting as a number is not needed here).
+
+**Individual trajectory view:**
+- `compute_trajectory()` in `backend/core.py` calls `get_moon(time_utc, location)` at **every 10-minute timestep** and stores the per-step angular separation in a `Moon Sep (°)` column.
+- The trajectory **"Detailed Data"** table shows the exact Moon Sep angle at each row.
+- The trajectory **"Moon Sep" metric** (top of results) shows `min°–max°` computed from `df['Moon Sep (°)']` — the minimum drives the status classification and the warning threshold check.
+- The **Altitude vs Time chart** tooltip includes Moon Sep when hovering.
+- A `st.caption()` below the Detailed Data table notes: *"Moon Sep (°): angular separation from the Moon at each 10-min step."*
+
+**Night Planner:**
+- `Moon Sep (°)` appears in the Night Planner table and in the generated PDF export (`generate_plan_pdf`), column width 1.6 cm.
+
+**Where Moon Sep does NOT appear:**
+- The **"Min Moon Sep" sidebar filter** (slider) still drives observability checks at the loop level — `sep_ok` is computed fresh from `moon_locs_chk[i]` for each target, NOT from the stored column. This is unchanged.
+- `Moon Status` (Safe/Caution/Avoid badge) is intentionally excluded from all displayed tables and CSV/PDF exports — it is only used internally for the sidebar filter.
 
 **Status thresholds** (`get_moon_status(illumination, separation)`):
 - 🌑 Dark Sky: illumination < 15%
@@ -269,7 +283,7 @@ These pipelines are independent. New discoveries do NOT automatically appear in 
 | Function | File | Purpose |
 |---|---|---|
 | `calculate_planning_info()` | `backend/core.py` | Rise/Set/Transit + Status per object |
-| `compute_trajectory()` | `backend/core.py` | Altitude/Az over time range |
+| `compute_trajectory()` | `backend/core.py` | Altitude/Az/RA/Dec/Constellation/Moon Sep (°) per 10-min step |
 | `resolve_simbad()` | `backend/resolvers.py` | SIMBAD name lookup → SkyCoord |
 | `resolve_horizons()` | `backend/resolvers.py` | JPL Horizons comet/asteroid position |
 | `resolve_planet()` | `backend/resolvers.py` | JPL Horizons planet position |
@@ -325,7 +339,7 @@ GitHub Actions uses the automatic `secrets.GITHUB_TOKEN` — no manual PAT neede
    - Call `plot_visibility_timeline()` in Observable tab
    - Add trajectory picker at bottom
 3. Follow the same tab structure: `st.tabs(["🎯 Observable (N)", "👻 Unobservable (M)"])`
-4. Do **not** include `Moon Sep (°)` or `Moon Status` in `display_cols_*` — these columns are computed internally for the sidebar filter but intentionally excluded from all displayed tables and CSV downloads. For extra numeric columns that need a unit suffix, use `st.column_config.NumberColumn(format="%d units")` directly in the `column_config` dict.
+4. **Include `Moon Sep (°)` in `display_cols_*`** — it now shows as a `"min°–max°"` range string in all overview tables and is included in CSV exports. Configure it via `_MOON_SEP_COL_CONFIG` (a `TextColumn`). Do **not** include `Moon Status` — that remains internal-only. For extra numeric columns that need a unit suffix, use `st.column_config.NumberColumn(format="%d units")` directly in the `column_config` dict.
 
 ---
 
