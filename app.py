@@ -3291,18 +3291,28 @@ if st.button("🚀 Calculate Visibility", type="primary", disabled=not resolved)
     df = pd.DataFrame(results)
     
 
-    # --- Moon Check ---
+    # --- Moon Check (driven from per-step trajectory data) ---
     current_moon_sep = None
     moon_status_text = "N/A"
-    if moon_loc and sky_coord:
+    if 'Moon Sep (°)' in df.columns and df['Moon Sep (°)'].notna().any():
+        _ms_vals = df['Moon Sep (°)'].dropna()
+        _ms_min = float(_ms_vals.min())
+        _ms_max = float(_ms_vals.max())
+        current_moon_sep = _ms_min
+        if _ms_min < min_moon_sep:
+            st.warning(f"⚠️ **Moon Warning:** Target gets as close as {_ms_min:.1f}° to the Moon during this window (Limit: {min_moon_sep}°).")
+        if 'moon_illum' in locals():
+            status = get_moon_status(moon_illum, _ms_min)
+            moon_status_text = f"{_ms_min:.1f}°–{_ms_max:.1f}° ({status})"
+    elif moon_loc and sky_coord:
+        # Fallback to single start-time value if trajectory Moon Sep unavailable
         sep = sky_coord.separation(moon_loc).degree
         current_moon_sep = sep
         if sep < min_moon_sep:
-             st.warning(f"⚠️ **Moon Warning:** Target is {sep:.1f}° from the Moon (Limit: {min_moon_sep}°).")
-
+            st.warning(f"⚠️ **Moon Warning:** Target is {sep:.1f}° from the Moon (Limit: {min_moon_sep}°).")
         if 'moon_illum' in locals():
-             status = get_moon_status(moon_illum, sep)
-             moon_status_text = f"{sep:.1f}° ({status})"
+            status = get_moon_status(moon_illum, sep)
+            moon_status_text = f"{sep:.1f}° ({status})"
 
     # --- Observational Filter Check ---
     # Check if any point in the trajectory meets the criteria
@@ -3357,6 +3367,7 @@ if st.button("🚀 Calculate Visibility", type="primary", disabled=not resolved)
     # Data Table
     st.subheader("Detailed Data")
     st.dataframe(df, width='stretch')
+    st.caption("🌙 **Moon Sep (°)**: angular separation from the Moon at each 10-min step.")
 
     # Sanitize filename
     safe_name = "".join(c for c in name if c.isalnum() or c in (' ', '-', '_')).strip()
