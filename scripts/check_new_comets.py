@@ -43,19 +43,22 @@ def load_watchlist():
 
 def query_recent_comets(lookback_days=LOOKBACK_DAYS):
     """
-    Query JPL SBDB for comets whose discovery date is within the last N days.
+    Query JPL SBDB for comets whose first observation date is within the last N days.
     Returns a list of dicts with: designation, pdes, disc, H, q, e
+
+    Note: The SBDB filter API does not support date-type constraints, so we fetch
+    the most recent comets (sorted by first_obs descending) and filter locally.
     """
     cutoff = (
         datetime.now(timezone.utc) - timedelta(days=lookback_days)
     ).strftime("%Y-%m-%d")
 
     params = {
-        "fields": "pdes,name,disc,H,q,e",
+        "fields": "pdes,name,first_obs,H,q,e",
         "sb-kind": "c",
-        "sb-cdata": json.dumps({"AND": [f"disc|d|>{cutoff}"]}),
         "full-prec": "false",
         "limit": "500",
+        "sort": "-first_obs",
     }
 
     print(f"Querying JPL SBDB for comets discovered after {cutoff} ...")
@@ -69,23 +72,28 @@ def query_recent_comets(lookback_days=LOOKBACK_DAYS):
 
     fields = data.get("fields", [])
     rows = data.get("data", [])
-    print(f"  {len(rows)} comet(s) returned from SBDB.")
+    print(f"  {len(rows)} comet(s) returned from SBDB; filtering by first_obs >= {cutoff} ...")
 
     result = []
     for row in rows:
         entry = dict(zip(fields, row))
         pdes = (entry.get("pdes") or "").strip()
         name = (entry.get("name") or "").strip()
-        disc = (entry.get("disc") or "").strip()
+        first_obs = (entry.get("first_obs") or "").strip()
         H_raw = entry.get("H")
         q_raw = entry.get("q")
         e_raw = entry.get("e")
+
+        if not first_obs:
+            continue
+        if first_obs < cutoff:
+            break  # Results are sorted newest-first; once we pass cutoff, we're done
 
         full_desig = f"{pdes} ({name})" if name else pdes
         result.append({
             "designation": full_desig,
             "pdes": pdes,
-            "disc": disc,
+            "disc": first_obs,
             "H": round(float(H_raw), 1) if H_raw is not None else None,
             "q": round(float(q_raw), 3) if q_raw is not None else None,
             "e": round(float(e_raw), 6) if e_raw is not None else None,

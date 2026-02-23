@@ -258,6 +258,8 @@ In practice, MPC CometEls.json only contains C and P types. The multiselect defa
 - Use case: Admin notification when a new comet is discovered that isn't on the watchlist
 - Output: GitHub Issues created via REST API; `_new_comets.json` is gitignored
 
+**SBDB API note (fixed 2026-02-23):** The SBDB filter API (`sb-cdata`) does not support date-type constraints — the original `disc|d|>date` syntax caused a persistent `400 Bad Request`. Also, `disc` is not a valid SBDB field name. The fix: request `first_obs` (the correct field), sort by `-first_obs` to get newest comets first, and filter locally by comparing `first_obs` against the cutoff date.
+
 These pipelines are independent. New discoveries do NOT automatically appear in Explore Catalog.
 
 ---
