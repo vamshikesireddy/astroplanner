@@ -462,7 +462,7 @@ def generate_plan_pdf(df_plan, night_start, night_end,
     for c in [target_col, pri_col, 'Type',
               'Rise', 'Transit', 'Set', dur_col,
               vmag_col, ra_col, dec_col, 'Constellation',
-              'Status', 'Moon Sep (°)', _link_col]:
+              'Status', 'Moon Sep (°)', 'Moon Status', _link_col]:
         if c and c in df_plan.columns and c not in display_cols:
             display_cols.append(c)
 
@@ -472,7 +472,7 @@ def generate_plan_pdf(df_plan, night_start, night_end,
         target_col: 2.6, pri_col: 1.5, 'Type': 1.2,
         'Rise': 1.4, 'Transit': 1.4, 'Set': 1.4,
         dur_col: 1.2, vmag_col: 1.0, ra_col: 1.9, dec_col: 1.7,
-        'Constellation': 1.6, 'Status': 1.7, 'Moon Sep (°)': 1.6, _link_col: 4.5,
+        'Constellation': 1.6, 'Status': 1.7, 'Moon Sep (°)': 1.6, 'Moon Status': 1.4, _link_col: 4.5,
     }
     col_widths = [_W.get(c, 1.5) * cm for c in display_cols]
 
@@ -540,6 +540,7 @@ COMET_CATALOG_FILE = "comets_catalog.json"
 # Standard column display configs reused across all sections
 _MOON_SEP_COL_CONFIG = {
     "Moon Sep (°)": st.column_config.TextColumn("Moon Sep (°)"),
+    "Moon Status": st.column_config.TextColumn("Moon Status"),
 }
 
 # Aliases for comets that appear under alternate designations on external pages
@@ -1226,7 +1227,7 @@ if target_mode == "Star/Galaxy/Nebula (SIMBAD)":
             df_filt_d = df_dsos[~df_dsos["is_observable"]].copy()
 
             display_cols_d = ["Name", "Common Name", "Type", "Magnitude", "Constellation",
-                              "Rise", "Transit", "Set", "RA", "Dec", "Status", "Moon Sep (°)"]
+                              "Rise", "Transit", "Set", "RA", "Dec", "Status", "Moon Sep (°)", "Moon Status"]
 
             def display_dso_table(df_in):
                 show = [c for c in display_cols_d if c in df_in.columns]
@@ -1257,7 +1258,7 @@ if target_mode == "Star/Galaxy/Nebula (SIMBAD)":
 
             st.download_button(
                 "Download DSO Data (CSV)",
-                data=df_dsos.drop(columns=["is_observable", "filter_reason", "_rise_datetime", "_set_datetime", "Moon Status"], errors="ignore").to_csv(index=False).encode("utf-8"),
+                data=df_dsos.drop(columns=["is_observable", "filter_reason", "_rise_datetime", "_set_datetime"], errors="ignore").to_csv(index=False).encode("utf-8"),
                 file_name=f"dso_{category.lower().replace(' ', '_')}_visibility.csv",
                 mime="text/csv"
             )
@@ -1402,7 +1403,7 @@ elif target_mode == "Planet (JPL Horizons)":
             df_filt_p = df_planets[~df_planets["is_observable"]].copy()
 
             display_cols_p = ["Name", "Constellation", "Rise", "Transit", "Set",
-                              "RA", "Dec", "Status", "Moon Sep (°)"]
+                              "RA", "Dec", "Status", "Moon Sep (°)", "Moon Status"]
 
             tab_obs_p, tab_filt_p = st.tabs([
                 f"🎯 Observable ({len(df_obs_p)})",
@@ -1760,7 +1761,7 @@ elif target_mode == "Comet (JPL Horizons)":
                 df_filt_c = df_comets[~df_comets["is_observable"]].copy()
 
                 display_cols_c = ["Name", "Priority", "Window", "Constellation", "Rise", "Transit", "Set",
-                                  "RA", "Dec", "Status", "Moon Sep (°)"]
+                                  "RA", "Dec", "Status", "Moon Sep (°)", "Moon Status"]
 
                 def display_comet_table(df_in):
                     show = [c for c in display_cols_c if c in df_in.columns]
@@ -1806,7 +1807,7 @@ elif target_mode == "Comet (JPL Horizons)":
 
                 st.download_button(
                     "Download Comet Data (CSV)",
-                    data=df_comets.drop(columns=["is_observable", "filter_reason", "_rise_datetime", "_set_datetime", "Moon Status"], errors="ignore").to_csv(index=False).encode("utf-8"),
+                    data=df_comets.drop(columns=["is_observable", "filter_reason", "_rise_datetime", "_set_datetime"], errors="ignore").to_csv(index=False).encode("utf-8"),
                     file_name="comets_visibility.csv",
                     mime="text/csv"
                 )
@@ -2329,7 +2330,7 @@ elif target_mode == "Asteroid (JPL Horizons)":
             df_filt_a = df_asteroids[~df_asteroids["is_observable"]].copy()
 
             display_cols_a = ["Name", "Priority", "Window", "Constellation", "Rise", "Transit", "Set",
-                              "RA", "Dec", "Status", "Moon Sep (°)"]
+                              "RA", "Dec", "Status", "Moon Sep (°)", "Moon Status"]
 
             def display_asteroid_table(df_in):
                 show = [c for c in display_cols_a if c in df_in.columns]
@@ -2375,7 +2376,7 @@ elif target_mode == "Asteroid (JPL Horizons)":
 
             st.download_button(
                 "Download Asteroid Data (CSV)",
-                data=df_asteroids.drop(columns=["is_observable", "filter_reason", "_rise_datetime", "_set_datetime", "Moon Status"], errors="ignore").to_csv(index=False).encode("utf-8"),
+                data=df_asteroids.drop(columns=["is_observable", "filter_reason", "_rise_datetime", "_set_datetime"], errors="ignore").to_csv(index=False).encode("utf-8"),
                 file_name="asteroids_visibility.csv",
                 mime="text/csv"
             )
@@ -2813,7 +2814,7 @@ elif target_mode == "Cosmic Cataclysm":
             if pri_col and pri_col in df_display.columns:
                 priority_cols.insert(1, pri_col)
 
-            other_cols = [c for c in df_display.columns if c not in priority_cols and c != link_col and c not in ('Moon Status',)]
+            other_cols = [c for c in df_display.columns if c not in priority_cols and c != link_col]
             
             final_order = priority_cols + other_cols
             if link_col:
@@ -3015,7 +3016,7 @@ elif target_mode == "Cosmic Cataclysm":
                 with _bc2:
                     st.download_button(
                         "📊 All Alerts (CSV)",
-                        data=df_alerts.drop(columns=["Moon Status"], errors="ignore").to_csv(index=False).encode('utf-8'),
+                        data=df_alerts.to_csv(index=False).encode('utf-8'),
                         file_name="unistellar_targets.csv",
                         mime="text/csv",
                         use_container_width=True,

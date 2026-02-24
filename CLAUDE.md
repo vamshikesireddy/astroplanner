@@ -149,7 +149,7 @@ It is formatted with `st.column_config.NumberColumn(format="%d min")` inside `di
 
 ### 7a. Moon Separation — How It Works
 
-Moon Sep is **shown** in all overview tables as a range string and in CSV exports. Moon Status is computed internally (for the sidebar filter) but is **not shown** in any table or export.
+Moon Sep is **shown** in all overview tables as a range string and in CSV exports. Moon Status is shown as a **separate column** next to Moon Sep in all overview tables, CSV exports, and the Night Plan PDF.
 
 **IMPORTANT — `moon_sep_deg()` helper (backend/core.py):**
 All Moon–target angular separations **must** use `moon_sep_deg(target, moon)` instead of `target.separation(moon).degree`. Astropy's `get_body('moon')` returns a 3D GCRS coordinate (with distance). Calling `.separation()` across ICRS↔GCRS with 3D coords produces wildly wrong results (e.g. 4.5° for objects 98° apart). The helper strips the Moon's distance to get a correct direction-only separation. See CHANGELOG.md entry 2026-02-23 for full details.
@@ -163,7 +163,7 @@ _max_sep = max(_seps) if _seps else _min_sep
 moon_sep_list.append(f"{_min_sep:.1f}°–{_max_sep:.1f}°" if moon_loc else "–")
 ```
 
-Three check times: start / mid / end of the observation window. `_min_sep` (worst case) is still used for `get_moon_status()` classification and the sidebar filter check. The range string is stored in the `Moon Sep (°)` column and formatted via `_MOON_SEP_COL_CONFIG` (a `TextColumn` — not a `NumberColumn`, because sorting as a number is not needed here).
+Three check times: start / mid / end of the observation window. `_min_sep` (worst case) is used for `get_moon_status()` classification and the sidebar filter check. The range string is stored in the `Moon Sep (°)` column and formatted via `_MOON_SEP_COL_CONFIG` (which also configures `Moon Status` as a `TextColumn`).
 
 **Individual trajectory view:**
 - `compute_trajectory()` in `backend/core.py` calls `get_moon(time_utc, location)` at **every 10-minute timestep** and stores the per-step angular separation via `moon_sep_deg()` in a `Moon Sep (°)` column.
@@ -173,11 +173,10 @@ Three check times: start / mid / end of the observation window. `_min_sep` (wors
 - A `st.caption()` below the Detailed Data table notes: *"Moon Sep (°): angular separation from the Moon at each 10-min step."*
 
 **Night Planner:**
-- `Moon Sep (°)` appears in the Night Planner table and in the generated PDF export (`generate_plan_pdf`), column width 1.6 cm.
+- `Moon Sep (°)` and `Moon Status` both appear in the Night Planner table and in the generated PDF export (`generate_plan_pdf`), column widths 1.6 cm and 1.4 cm respectively.
 
-**Where Moon Sep does NOT appear:**
-- The **"Min Moon Sep" sidebar filter** (slider) still drives observability checks at the loop level — `sep_ok` is computed fresh from `moon_locs_chk[i]` for each target, NOT from the stored column. This is unchanged.
-- `Moon Status` (Safe/Caution/Avoid badge) is intentionally excluded from all displayed tables and CSV/PDF exports — it is only used internally for the sidebar filter.
+**Sidebar filter note:**
+- The **"Min Moon Sep" sidebar filter** (slider) drives observability checks at the loop level — `sep_ok` is computed fresh from `moon_locs_chk[i]` for each target, NOT from the stored column. This is independent of the displayed Moon Status badge.
 
 **Status thresholds** (`get_moon_status(illumination, separation)`):
 - 🌑 Dark Sky: illumination < 15%
@@ -343,7 +342,7 @@ GitHub Actions uses the automatic `secrets.GITHUB_TOKEN` — no manual PAT neede
    - Call `plot_visibility_timeline()` in Observable tab
    - Add trajectory picker at bottom
 3. Follow the same tab structure: `st.tabs(["🎯 Observable (N)", "👻 Unobservable (M)"])`
-4. **Include `Moon Sep (°)` in `display_cols_*`** — it now shows as a `"min°–max°"` range string in all overview tables and is included in CSV exports. Configure it via `_MOON_SEP_COL_CONFIG` (a `TextColumn`). Do **not** include `Moon Status` — that remains internal-only. For extra numeric columns that need a unit suffix, use `st.column_config.NumberColumn(format="%d units")` directly in the `column_config` dict.
+4. **Include `Moon Sep (°)` and `Moon Status` in `display_cols_*`** — Moon Sep shows as a `"min°–max°"` range string, Moon Status shows the emoji badge (🌑/⛔/⚠️/✅). Both are included in overview tables, CSV exports, and Night Plan PDF. Configure via `_MOON_SEP_COL_CONFIG` (covers both as `TextColumn`). For extra numeric columns that need a unit suffix, use `st.column_config.NumberColumn(format="%d units")` directly in the `column_config` dict.
 
 ---
 
