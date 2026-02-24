@@ -1416,12 +1416,30 @@ if lat is not None and lon is not None:
         moon_az_deg = moon_altaz.az.degree
         moon_direction = azimuth_to_compass(moon_az_deg)
 
+        # Moon rise/transit/set
+        _moon_sky = SkyCoord(ra=moon_loc.ra, dec=moon_loc.dec, frame='icrs')
+        _moon_plan = calculate_planning_info(_moon_sky, location, start_time)
+        _tfmt = "%H:%M"
+        if _moon_plan['Rise'] == 'Always Up':
+            _moon_rise_str = "Always Up"
+            _moon_set_str = "Always Up"
+        elif _moon_plan.get('_rise_datetime'):
+            _moon_rise_str = _moon_plan['_rise_datetime'].strftime(_tfmt)
+            _moon_set_str = _moon_plan['_set_datetime'].strftime(_tfmt) if _moon_plan.get('_set_datetime') else '—'
+        else:
+            _moon_rise_str = '—'
+            _moon_set_str = '—'
+        _moon_transit_str = _moon_plan['_transit_datetime'].strftime(_tfmt) if _moon_plan.get('_transit_datetime') else '—'
+
         st.sidebar.markdown("---")
         st.sidebar.markdown(f"""
         **🌑 Moon Status:**
         *   Illumination: **{moon_illum:.0f}%**
         *   Altitude: **{moon_alt:.0f}°**
         *   Direction: **{moon_direction}** ({moon_az_deg:.0f}°)
+        *   Rise: **{_moon_rise_str}**
+        *   Transit: **{_moon_transit_str}**
+        *   Set: **{_moon_set_str}**
         """)
         st.sidebar.markdown("""
         <small>
