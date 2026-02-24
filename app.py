@@ -1430,6 +1430,8 @@ if lat is not None and lon is not None:
             _moon_rise_str = '—'
             _moon_set_str = '—'
         _moon_transit_str = _moon_plan['_transit_datetime'].strftime(_tfmt) if _moon_plan.get('_transit_datetime') else '—'
+        _moon_ra_str = _moon_sky.ra.to_string(unit=u.hour, sep='hms', precision=0)
+        _moon_dec_str = _moon_sky.dec.to_string(sep='dms', precision=0)
 
         st.sidebar.markdown("---")
         st.sidebar.markdown(f"""
@@ -1437,6 +1439,8 @@ if lat is not None and lon is not None:
         *   Illumination: **{moon_illum:.0f}%**
         *   Altitude: **{moon_alt:.0f}°**
         *   Direction: **{moon_direction}** ({moon_az_deg:.0f}°)
+        *   RA: **{_moon_ra_str}**
+        *   Dec: **{_moon_dec_str}**
         *   Rise: **{_moon_rise_str}**
         *   Transit: **{_moon_transit_str}**
         *   Set: **{_moon_set_str}**
