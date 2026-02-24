@@ -4,6 +4,20 @@ Bug fixes, discoveries, and notable changes. See CLAUDE.md for architecture and 
 
 ---
 
+## 2026-02-24 — Migrate scrapers from Selenium to Scrapling + add priority removal detection
+
+**Change 1 — Scraper migration:** Replaced Selenium + webdriver-manager with [Scrapling](https://github.com/D4Vinci/Scrapling) (`StealthyFetcher`) in `backend/scrape.py`. Scrapling uses Patchright (Playwright fork) — no more ChromeDriver version mismatches. Added `_deep_text()` helper because Scrapling's `.text` only returns direct text nodes (Selenium's `.text` returns all descendant text). Tested side-by-side: identical output across all 3 scrapers (transient events 78/78 rows, comet missions 7/7, asteroid missions 2/2). Scrapling also bypasses Cloudflare browser checks that block headless Selenium.
+
+**Change 2 — Priority removal detection:** The app already detected when Unistellar *added* new priority targets. Now it also detects *removals* — objects in our `unistellar_priority` list that are no longer on Unistellar's missions page. Removals appear as pending requests in the admin panel (Accept removes from YAML priority list, Reject dismisses). Orange warning banners shown in the Priority expanders.
+
+**Change 3 — GitHub Actions priority sync:** New workflow `check-unistellar-priorities.yml` (Mon + Thu 07:00 UTC) scrapes both Unistellar mission pages, compares with YAML, and creates GitHub Issues with `priority-added` (green) or `priority-removed` (red) labels. Supports `# aka 3I/ATLAS` YAML comments for redesignated objects (avoids false add/remove pairs when an object gets a new designation).
+
+**Change 4 — Watchlist sync:** Updated `comets.yaml` (tagged C/2025 N1 as `# aka 3I/ATLAS`, removed 24P/Schaumasse from priority) and `asteroids.yaml` (removed 433 Eros, 2033 Basilea, 3260 Vizbor from priority — no longer on Unistellar's page).
+
+**Files changed:** `backend/scrape.py`, `app.py`, `requirements.txt`, `comets.yaml`, `asteroids.yaml`, `.gitignore`, `CLAUDE.md`. **New files:** `scripts/check_unistellar_priorities.py`, `scripts/open_priority_issues.py`, `.github/workflows/check-unistellar-priorities.yml`.
+
+---
+
 ## 2026-02-23 — Moon Separation calculation was completely wrong
 
 **Bug:** Every Moon Sep value across all six sections was incorrect. Example: ZTF25abwjewp (RA 10h 24m, Dec +5°15') showed 4.4°–4.5° when the true separation was ~98°.

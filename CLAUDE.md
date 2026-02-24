@@ -10,12 +10,14 @@ Developer guide for Claude (and human contributors) working on this codebase.
 app.py (Streamlit UI + all section logic)
   ├── backend/core.py          (rise/set/transit calculations)
   ├── backend/resolvers.py     (SIMBAD + JPL Horizons API calls)
-  └── backend/scrape.py        (Selenium scrapers for Unistellar pages)
+  └── backend/scrape.py        (Scrapling scrapers for Unistellar pages)
 
 scripts/                       (standalone CLI tools run by GitHub Actions)
   ├── update_comet_catalog.py  (MPC download → comets_catalog.json)
   ├── check_new_comets.py      (JPL SBDB query → _new_comets.json)
-  └── open_comet_issues.py     (_new_comets.json → GitHub Issues)
+  ├── open_comet_issues.py     (_new_comets.json → GitHub Issues)
+  ├── check_unistellar_priorities.py  (scrape priorities → _priority_changes.json)
+  └── open_priority_issues.py  (_priority_changes.json → GitHub Issues)
 
 Data files (tracked in git):
   comets.yaml            ← curated watchlist (~24 comets)
@@ -281,6 +283,20 @@ In practice, MPC CometEls.json only contains C and P types. The multiselect defa
 
 These pipelines are independent. New discoveries do NOT automatically appear in Explore Catalog.
 
+### Pipeline 3 — Unistellar Priority Sync (scrape + diff)
+- Source: Unistellar comet missions + planetary defense pages (scraped with Scrapling)
+- Coverage: Detects additions AND removals against `unistellar_priority` in YAML files
+- Update cadence: Twice weekly (Mon + Thu 07:00 UTC via GitHub Actions) + runtime (once per app session)
+- Output: GitHub Issues with `priority-added` (green) or `priority-removed` (red) labels; pending requests in admin panel
+- Alias support: YAML entries with `# aka 3I/ATLAS` comments are matched against redesignated names
+- Runtime flow: app auto-detection writes to `comet_pending_requests.txt` / `asteroid_pending_requests.txt` → admin Accept/Reject in sidebar
+- CI flow: `check_unistellar_priorities.py` → `_priority_changes.json` → `open_priority_issues.py` → GitHub Issues
+
+**Scraping library (migrated 2026-02-24):** All scrapers use [Scrapling](https://github.com/D4Vinci/Scrapling) (`StealthyFetcher`) instead of Selenium. Key differences:
+- `_deep_text(element)` helper needed: Scrapling's `.text` only returns direct text nodes, not child element text. The helper uses `::text` pseudo-selector to match Selenium's `.text` behaviour.
+- No driver management: Scrapling uses Patchright (Playwright fork) — no ChromeDriver version mismatches.
+- Anti-bot: `StealthyFetcher` bypasses Cloudflare browser checks that block headless Selenium.
+
 ---
 
 ## Key Functions Reference
@@ -304,9 +320,12 @@ These pipelines are independent. New discoveries do NOT automatically appear in 
 | `load_comets_config()` | `app.py` | Load + parse comets.yaml |
 | `save_comets_config()` | `app.py` | Save comets.yaml + GitHub push |
 | `_send_github_notification()` | `app.py` | Create GitHub Issue (admin alerts) |
-| `scrape_unistellar_table()` | `backend/scrape.py` | Scrape Cosmic Cataclysm alerts |
-| `scrape_unistellar_priority_comets()` | `backend/scrape.py` | Scrape comet missions page |
-| `scrape_unistellar_priority_asteroids()` | `backend/scrape.py` | Scrape planetary defense page |
+| `scrape_unistellar_table()` | `backend/scrape.py` | Scrape Cosmic Cataclysm alerts (Scrapling) |
+| `scrape_unistellar_priority_comets()` | `backend/scrape.py` | Scrape comet missions page (Scrapling) |
+| `scrape_unistellar_priority_asteroids()` | `backend/scrape.py` | Scrape planetary defense page (Scrapling) |
+| `_deep_text()` | `backend/scrape.py` | Get all descendant text from Scrapling element |
+| `check_unistellar_priorities.main()` | `scripts/check_unistellar_priorities.py` | Scrape + diff priorities, write `_priority_changes.json` |
+| `open_priority_issues.main()` | `scripts/open_priority_issues.py` | Create GitHub Issues for priority changes |
 
 ---
 
@@ -358,8 +377,9 @@ streamlit run app.py
 
 Scripts (safe, read-only):
 ```bash
-python scripts/update_comet_catalog.py    # downloads MPC catalog → comets_catalog.json
-python scripts/check_new_comets.py        # queries JPL SBDB → _new_comets.json (if new found)
+python scripts/update_comet_catalog.py           # downloads MPC catalog → comets_catalog.json
+python scripts/check_new_comets.py               # queries JPL SBDB → _new_comets.json (if new found)
+python scripts/check_unistellar_priorities.py    # scrapes Unistellar, diffs vs YAML → _priority_changes.json
 ```
 
-`open_comet_issues.py` requires `GITHUB_TOKEN` and `GITHUB_REPOSITORY` — intended for CI only.
+`open_comet_issues.py` and `open_priority_issues.py` require `GITHUB_TOKEN` and `GITHUB_REPOSITORY` — intended for CI only.

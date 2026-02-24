@@ -1,6 +1,5 @@
 pandas
-selenium
-webdriver-manager
+scrapling[fetchers]
 geocoder
 pytz
 timezonefinder

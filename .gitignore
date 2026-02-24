@@ -14,8 +14,9 @@ pending_requests.txt
 comet_pending_requests.txt
 asteroid_pending_requests.txt
 
-# Temporary file produced by check_new_comets.py (never committed)
+# Temporary files produced by CI scripts (never committed)
 _new_comets.json
+_priority_changes.json
 
 # OS generated files
 .DS_Store

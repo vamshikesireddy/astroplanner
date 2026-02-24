@@ -1,0 +1,51 @@
+name: Check Unistellar Priority Changes
+
+on:
+  schedule:
+    - cron: "0 7 * * 1"   # Monday  at 07:00 UTC
+    - cron: "0 7 * * 4"   # Thursday at 07:00 UTC
+  workflow_dispatch:        # manual trigger from GitHub Actions tab
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read   # read comets.yaml / asteroids.yaml
+      issues: write    # create GitHub Issues
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: |
+          pip install "scrapling[fetchers]" pyyaml
+          python -m patchright install chromium
+
+      - name: Ensure issue labels exist
+        run: |
+          gh label create "priority-added" --color "0E8A16" --description "New object added to Unistellar priority missions" --force || true
+          gh label create "priority-removed" --color "D93F0B" --description "Object removed from Unistellar priority missions" --force || true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Check Unistellar priority pages for changes
+        id: check
+        run: |
+          python scripts/check_unistellar_priorities.py
+          if [ -f "_priority_changes.json" ]; then
+            echo "has_changes=true" >> $GITHUB_OUTPUT
+          else
+            echo "has_changes=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Open GitHub Issues for priority changes
+        if: steps.check.outputs.has_changes == 'true'
+        run: python scripts/open_priority_issues.py
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

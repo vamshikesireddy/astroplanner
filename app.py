@@ -1477,11 +1477,14 @@ elif target_mode == "Comet (JPL Horizons)":
                     + "\n\nPlease add them via the Admin Panel.\n\n_Auto-detected by Astro Planner_"
                 )
 
-            # 2. Semi-automatic: scrape Unistellar missions page and notify if new comets detected
+            # 2. Semi-automatic: scrape Unistellar missions page and notify if new comets detected or removed
             scraped = get_unistellar_scraped_comets()
             st.session_state.comet_scraped_priority = scraped
             if scraped:
+                scraped_upper = {_resolve_comet_alias(c) for c in scraped}
                 priority_set_upper = {c.upper() for c in priority_set}
+
+                # 2a. Detect ADDITIONS — on Unistellar but not in our priority list
                 new_from_page = [c for c in scraped if _resolve_comet_alias(c) not in priority_set_upper]
                 if new_from_page:
                     # Write to pending file so it shows in the admin panel
@@ -1503,6 +1506,29 @@ elif target_mode == "Comet (JPL Horizons)":
                             + "\n\nPlease review and update `comets.yaml` if needed.\n\n"
                             "_Auto-detected by Astro Planner (daily scrape)_"
                         )
+
+                # 2b. Detect REMOVALS — in our priority list but no longer on Unistellar
+                removed_from_page = [c for c in priority_set if c.upper() not in scraped_upper and _resolve_comet_alias(c) not in scraped_upper]
+                if removed_from_page:
+                    existing_pending = []
+                    if os.path.exists(COMET_PENDING_FILE):
+                        with open(COMET_PENDING_FILE, "r") as f:
+                            existing_pending = [l.strip() for l in f if l.strip()]
+                    existing_names = {l.split('|')[0].strip() for l in existing_pending}
+                    truly_removed = [c for c in removed_from_page if c not in existing_names]
+                    with open(COMET_PENDING_FILE, "a") as f:
+                        for c in truly_removed:
+                            f.write(f"{c}|Remove from Priority|Removed from Unistellar missions page\n")
+                    if truly_removed:
+                        _send_github_notification(
+                            "🔻 Auto-Detected: Unistellar Priority Comets Removed",
+                            "The following comets are in our priority list but are no longer "
+                            "on the Unistellar missions page:\n\n"
+                            + "\n".join(f"- {c}" for c in truly_removed)
+                            + "\n\nPlease review and remove from `unistellar_priority` in `comets.yaml` if appropriate.\n\n"
+                            "_Auto-detected by Astro Planner (daily scrape)_"
+                        )
+                st.session_state.comet_removed_priority = removed_from_page
 
             st.session_state.comet_priority_notified = True
 
@@ -1544,6 +1570,12 @@ elif target_mode == "Comet (JPL Horizons)":
                             f"🔍 **{len(new_from_page)} new comet(s)** detected on the Unistellar missions page "
                             f"not yet in the priority list: {', '.join(new_from_page)}. Admin has been notified."
                         )
+                removed_c = st.session_state.get("comet_removed_priority", [])
+                if removed_c:
+                    st.warning(
+                        f"🔻 **{len(removed_c)} comet(s)** removed from Unistellar missions page "
+                        f"but still in our priority list: {', '.join(removed_c)}. Admin review needed."
+                    )
                 pri_rows_c = []
                 for _c_entry in comet_config.get("unistellar_priority", []):
                     _c_name = _c_entry["name"] if isinstance(_c_entry, dict) else _c_entry
@@ -1589,6 +1621,12 @@ elif target_mode == "Comet (JPL Horizons)":
                             # Auto-detected comets from the missions page scrape also go into unistellar_priority
                             if "Auto-detected from Unistellar missions page" in c_note and c_name not in cfg["unistellar_priority"]:
                                 cfg["unistellar_priority"].append(c_name)
+                            # Remove from Priority: remove from unistellar_priority list
+                            if c_action == "Remove from Priority":
+                                cfg["unistellar_priority"] = [
+                                    e for e in cfg["unistellar_priority"]
+                                    if (e["name"] if isinstance(e, dict) else e) != c_name
+                                ]
                             save_comets_config(cfg)
                             remaining = [l for l in c_lines if l != line]
                             with open(COMET_PENDING_FILE, "w") as f:
@@ -2057,7 +2095,10 @@ elif target_mode == "Asteroid (JPL Horizons)":
         scraped = get_unistellar_scraped_asteroids()
         st.session_state.asteroid_scraped_priority = scraped
         if scraped:
+            scraped_upper = {_resolve_asteroid_alias(a) for a in scraped}
             priority_set_upper = {n.upper() for n in priority_set}
+
+            # Detect ADDITIONS — on Unistellar but not in our priority list
             new_from_page = [a for a in scraped if _resolve_asteroid_alias(a) not in priority_set_upper]
             if new_from_page:
                 existing_pending = []
@@ -2078,6 +2119,30 @@ elif target_mode == "Asteroid (JPL Horizons)":
                         + "\n\nPlease review and update `asteroids.yaml` if needed.\n\n"
                         "_Auto-detected by Astro Planner (daily scrape)_"
                     )
+
+            # Detect REMOVALS — in our priority list but no longer on Unistellar
+            removed_from_page = [n for n in priority_set if n.upper() not in scraped_upper and _resolve_asteroid_alias(n) not in scraped_upper]
+            if removed_from_page:
+                existing_pending = []
+                if os.path.exists(ASTEROID_PENDING_FILE):
+                    with open(ASTEROID_PENDING_FILE, "r") as f:
+                        existing_pending = [l.strip() for l in f if l.strip()]
+                existing_names = {l.split('|')[0].strip() for l in existing_pending}
+                truly_removed = [a for a in removed_from_page if a not in existing_names]
+                with open(ASTEROID_PENDING_FILE, "a") as f:
+                    for a in truly_removed:
+                        f.write(f"{a}|Remove from Priority|Removed from Unistellar planetary defense page\n")
+                if truly_removed:
+                    _send_github_notification(
+                        "🔻 Auto-Detected: Unistellar Priority Asteroids Removed",
+                        "The following asteroids are in our priority list but are no longer "
+                        "on the Unistellar planetary defense missions page:\n\n"
+                        + "\n".join(f"- {a}" for a in truly_removed)
+                        + "\n\nPlease review and remove from `unistellar_priority` in `asteroids.yaml` if appropriate.\n\n"
+                        "_Auto-detected by Astro Planner (daily scrape)_"
+                    )
+            st.session_state.asteroid_removed_priority = removed_from_page
+
         st.session_state.asteroid_priority_notified = True
 
     # User: request an asteroid addition
@@ -2118,6 +2183,12 @@ elif target_mode == "Asteroid (JPL Horizons)":
                         f"🔍 **{len(new_from_page)} new asteroid(s)** detected on the Unistellar missions page "
                         f"not yet in the priority list: {', '.join(new_from_page)}. Admin has been notified."
                     )
+            removed_a = st.session_state.get("asteroid_removed_priority", [])
+            if removed_a:
+                st.warning(
+                    f"🔻 **{len(removed_a)} asteroid(s)** removed from Unistellar missions page "
+                    f"but still in our priority list: {', '.join(removed_a)}. Admin review needed."
+                )
             pri_rows = []
             for entry in asteroid_config.get("unistellar_priority", []):
                 a_name = _asteroid_priority_name(entry)
@@ -2164,6 +2235,12 @@ elif target_mode == "Asteroid (JPL Horizons)":
                             priority_names = [_asteroid_priority_name(e) for e in cfg["unistellar_priority"]]
                             if a_name not in priority_names:
                                 cfg["unistellar_priority"].append(a_name)
+                        # Remove from Priority: remove from unistellar_priority list
+                        if a_action == "Remove from Priority":
+                            cfg["unistellar_priority"] = [
+                                e for e in cfg["unistellar_priority"]
+                                if _asteroid_priority_name(e) != a_name
+                            ]
                         save_asteroids_config(cfg)
                         remaining = [l for l in a_lines if l != line]
                         with open(ASTEROID_PENDING_FILE, "w") as f:

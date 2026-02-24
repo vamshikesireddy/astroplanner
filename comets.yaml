@@ -18,7 +18,7 @@ comets:
 - C/2025 J1 (Borisov)
 - C/2025 K1 (ATLAS)
 - C/2025 L1 (ATLAS)
-- C/2025 N1 (ATLAS)
+- C/2025 N1 (ATLAS)  # aka 3I/ATLAS (redesignated interstellar)
 - C/2025 Q3 (ATLAS)
 - C/2025 R2 (SWAN)
 - C/2025 R3 (PANSTARRS)
@@ -27,11 +27,10 @@ comets:
 - C/2025 F2
 priorities: {}
 unistellar_priority:
-- C/2025 N1 (ATLAS)
+- C/2025 N1 (ATLAS)  # aka 3I/ATLAS (redesignated interstellar)
 - 29P/Schwassmann-Wachmann 1
 - C/2025 K1 (ATLAS)
 - C/2025 R2 (SWAN)
 - C/2025 A6 (Lemmon)
-- 24P/Schaumasse
 - C/2025 R3 (PANSTARRS)
 - C/2026 A1 (MAPS)
