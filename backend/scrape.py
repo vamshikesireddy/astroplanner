@@ -1,7 +1,25 @@
 import re
+import subprocess
 import pandas as pd
 
 from scrapling.fetchers import StealthyFetcher
+
+_browser_ready = False
+
+
+def _ensure_browser():
+    """Install Patchright Chromium if not already present (idempotent, runs once per session)."""
+    global _browser_ready
+    if _browser_ready:
+        return
+    try:
+        subprocess.run(
+            ["patchright", "install", "chromium"],
+            check=True, capture_output=True, text=True, timeout=120,
+        )
+    except Exception as e:
+        print(f"Browser auto-install note: {e}")
+    _browser_ready = True
 
 
 def _deep_text(element):
@@ -22,6 +40,7 @@ def scrape_unistellar_table():
 
     try:
         print("Connecting to Unistellar Alerts...")
+        _ensure_browser()
         page = StealthyFetcher.fetch(url, headless=True, network_idle=True)
 
         # Get headers
@@ -75,6 +94,7 @@ def scrape_unistellar_priority_comets():
     url = "https://science.unistellar.com/comets/missions/"
 
     try:
+        _ensure_browser()
         page = StealthyFetcher.fetch(url, headless=True, network_idle=True)
 
         # Collect text from headings and content sections (Divi theme structure)
@@ -92,6 +112,7 @@ def scrape_unistellar_priority_comets():
 _ASTEROID_PATTERN = re.compile(
     r'(?:'
     r'\(\d+\)\s+[A-Z][a-z]+(?:\s+[A-Z][a-z]+)*|'  # (2033) Basilea, (3260) Vizbor — IAU parenthesized format
+    r'\d{1,4}\s+\([A-Z][a-z]+(?:\s+[A-Z][a-z]+)*\)|'  # 2033 (Basilea), 3260 (Vizbor) — Unistellar format
     r'\d{5,}\s+[A-Z][a-z]+(?:\s+[A-Z][a-z]+)*|'   # 99942 Apophis, 101955 Bennu
     r'\d{1,4}\s+[A-Z][a-z]+(?:\s+[A-Z][a-z]+)*|'  # 433 Eros, 16 Psyche, 2033 Basilea
     r'\d{4}\s+[A-Z]{1,2}\d+|'                       # 2024 YR4, 1994 PC1
@@ -100,11 +121,35 @@ _ASTEROID_PATTERN = re.compile(
 )
 
 _PAREN_NUM_RE = re.compile(r'^\((\d+)\)\s+')
+_NUM_PAREN_NAME_RE = re.compile(r'^(\d+)\s+\(([^)]+)\)$')
 
 
 def _normalize_asteroid_match(name):
-    """Convert IAU parenthesized format '(2033) Basilea' → '2033 Basilea'."""
+    """Normalize asteroid name to 'NUMBER Name' format.
+
+    Handles:
+      '(2033) Basilea' → '2033 Basilea'   (IAU parenthesized number)
+      '2033 (Basilea)' → '2033 Basilea'   (Unistellar parenthesized name)
+    """
+    m = _NUM_PAREN_NAME_RE.match(name)
+    if m:
+        return f"{m.group(1)} {m.group(2)}"
     return _PAREN_NUM_RE.sub(r'\1 ', name)
+
+
+_BARE_NAME_ALIASES = {
+    "Eros": "433 Eros",
+    "Apophis": "99942 Apophis",
+    "Bennu": "101955 Bennu",
+    "Psyche": "16 Psyche",
+    "Phaethon": "3200 Phaethon",
+}
+
+# Headings to skip — these are page structure, not asteroid targets
+_SKIP_HEADINGS = {
+    "missions", "near-earth asteroid campaigns", "main-belt campaigns",
+    "new here?", "astro llm",
+}
 
 
 def scrape_unistellar_priority_asteroids():
@@ -112,16 +157,27 @@ def scrape_unistellar_priority_asteroids():
     url = "https://science.unistellar.com/planetary-defense/missions/"
 
     try:
+        _ensure_browser()
         page = StealthyFetcher.fetch(url, headless=True, network_idle=True)
 
-        # Collect text from headings and content sections (Divi theme structure)
-        elements = page.css("h1,h2,h3,h4,p,.et_pb_text_inner")
-        text = " ".join(re.sub(r'\s+', ' ', _deep_text(el)) for el in elements if _deep_text(el))
+        # Each mission target is an <h3> heading on the page
+        found = []
+        for el in page.css("h3"):
+            name = _deep_text(el).strip()
+            if not name or name.lower() in _SKIP_HEADINGS:
+                continue
 
-        # Extract, normalize parenthesized numbers, and deduplicate
-        raw = _ASTEROID_PATTERN.findall(text)
-        found = list(dict.fromkeys(_normalize_asteroid_match(m) for m in raw))
-        return found
+            # Try regex match first (handles numbered designations)
+            m = _ASTEROID_PATTERN.search(name)
+            if m:
+                found.append(_normalize_asteroid_match(m.group()))
+            elif name in _BARE_NAME_ALIASES:
+                found.append(_BARE_NAME_ALIASES[name])
+            else:
+                # Unknown bare name — include as-is so it surfaces in diff
+                found.append(name)
+
+        return list(dict.fromkeys(found))
     except Exception as e:
         print(f"Failed to scrape Unistellar planetary defense page: {e}")
         return []
