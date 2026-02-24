@@ -158,7 +158,7 @@ def plot_visibility_timeline(df, obs_start=None, obs_end=None, default_sort_labe
     # Sort Toggle
     sort_option = st.radio(
         "Sort Graph By:",
-        ["Earliest Set", "Earliest Rise", default_sort_label],
+        ["Earliest Set", "Earliest Rise", "Earliest Transit", default_sort_label],
         horizontal=True,
         label_visibility="collapsed"
     )
@@ -182,6 +182,9 @@ def plot_visibility_timeline(df, obs_start=None, obs_end=None, default_sort_labe
         sort_arg = _reg_sorted_names + _au_sorted_names   # Always Up at bottom
     elif sort_option == "Earliest Set":
         _reg_sorted_names = _reg_df.sort_values('_set_naive', ascending=True)['Name'].tolist()
+        sort_arg = _reg_sorted_names + _au_sorted_names   # Always Up at bottom
+    elif sort_option == "Earliest Transit":
+        _reg_sorted_names = _reg_df.sort_values('_transit_naive', ascending=True, na_position='last')['Name'].tolist()
         sort_arg = _reg_sorted_names + _au_sorted_names   # Always Up at bottom
     else:  # Default Order / Priority Order — preserve source order, optionally rank by priority
         if priority_col and priority_col in chart_data.columns:
