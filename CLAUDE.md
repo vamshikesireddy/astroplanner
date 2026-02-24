@@ -171,6 +171,7 @@ Three check times: start / mid / end of the observation window. `_min_sep` (wors
 - The trajectory **"Moon Sep" metric** (top of results) shows `min°–max°` computed from `df['Moon Sep (°)']` — the minimum drives the status classification and the warning threshold check.
 - The **Altitude vs Time chart** tooltip includes Moon Sep when hovering.
 - A `st.caption()` below the Detailed Data table notes: *"Moon Sep (°): angular separation from the Moon at each 10-min step."*
+- **Moon Status is NOT shown in the trajectory view** — it is an overview-level summary (based on worst-case sep across the whole window), not a per-step metric. Only the numeric `Moon Sep (°)` appears in trajectory rows.
 
 **Night Planner:**
 - `Moon Sep (°)` and `Moon Status` both appear in the Night Planner table and in the generated PDF export (`generate_plan_pdf`), column widths 1.6 cm and 1.4 cm respectively.
