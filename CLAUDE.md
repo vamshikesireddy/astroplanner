@@ -164,7 +164,7 @@ The Comet section has an internal radio toggle: `"📋 My List"` and `"🔭 Expl
 
 Streamlit renders pandas `float64` columns with full precision by default. Use `st.column_config.NumberColumn` to control the displayed format while keeping the underlying value numeric (so column-header sorting works correctly).
 
-`_MOON_SEP_COL_CONFIG` is defined at module level as a `TextColumn` (not `NumberColumn`) and is passed to all overview table `st.dataframe()` calls. It formats the `Moon Sep (°)` range string. `Moon Status` is intentionally excluded from all display code.
+`_MOON_SEP_COL_CONFIG` is defined at module level as a `TextColumn` (not `NumberColumn`) and is passed to all overview table `st.dataframe()` calls. It formats the `Moon Sep (°)` range string. `Moon Status` is shown as a `TextColumn` in all overview tables alongside `Moon Sep (°)`.
 
 The Cosmic Duration column is sourced in seconds from the scraper and **converted to minutes** immediately after `df_display` is built:
 ```python
@@ -328,6 +328,8 @@ disc_col  = next((c for c in df_display.columns if 'disc' in c.lower() or ('date
 - **CSV** — `_plan_display.to_csv()` (all visible columns, no hidden `_` columns)
 - **PDF** — `generate_plan_pdf(_scheduled, ...)` — passes the full `_scheduled` DataFrame
 
+**PDF deeplinks:** The `unistellar://` deeplink URL column appears only in the Cosmic Cataclysm PDF (the only section with a `link_col`). All other sections export RA/Dec/Rise/Transit/Set columns but no deeplink.
+
 ### 9. Orbit Type Label Mapping (Explore Catalog)
 
 ```python
@@ -462,7 +464,8 @@ GitHub Actions uses the automatic `secrets.GITHUB_TOKEN` — no manual PAT neede
    - Call `plot_visibility_timeline()` in Observable tab
    - Add trajectory picker at bottom
 3. Follow the same tab structure: `st.tabs(["🎯 Observable (N)", "👻 Unobservable (M)"])`
-4. **Include `Moon Sep (°)` and `Moon Status` in `display_cols_*`** — Moon Sep shows as a `"min°–max°"` range string, Moon Status shows the emoji badge (🌑/⛔/⚠️/✅). Both are included in overview tables, CSV exports, and Night Plan PDF. Configure via `_MOON_SEP_COL_CONFIG` (covers both as `TextColumn`). For extra numeric columns that need a unit suffix, use `st.column_config.NumberColumn(format="%d units")` directly in the `column_config` dict.
+4. **Include `Moon Sep (°)` and `Moon Status` in `display_cols_*`**
+5. **Add a Night Plan Builder** inside the Observable tab: call `_render_night_plan_builder()` with the appropriate `section_key` (must be unique across all sections), `pri_col` if the section has priorities, and any optional column args (`vmag_col`, `type_col`, `disc_col`, `link_col`). — Moon Sep shows as a `"min°–max°"` range string, Moon Status shows the emoji badge (🌑/⛔/⚠️/✅). Both are included in overview tables, CSV exports, and Night Plan PDF. Configure via `_MOON_SEP_COL_CONFIG` (covers both as `TextColumn`). For extra numeric columns that need a unit suffix, use `st.column_config.NumberColumn(format="%d units")` directly in the `column_config` dict.
 
 ---
 
@@ -470,7 +473,8 @@ GitHub Actions uses the automatic `secrets.GITHUB_TOKEN` — no manual PAT neede
 
 ```bash
 pip install -r requirements.txt
-streamlit run app.py
+python -m streamlit run app.py        # use python -m if 'streamlit' is not in PATH
+python -m py_compile app.py           # syntax check before committing
 ```
 
 Scripts (safe, read-only):
