@@ -362,36 +362,20 @@ def _send_github_notification(title, body):
             print(f"Failed to send notification: {e}")
 
 
-def build_night_plan(df_obs, pri_col, dur_col):
-    """Build a filtered, priority-sorted target list for tonight.
+def build_night_plan(df_obs, pri_col, dur_col, sort_by="set"):
+    """Build a filtered, time-sorted target list for tonight.
 
-    Sort order: URGENT > HIGH > MEDIUM > LOW > unassigned,
-    then ascending set-time within each tier (observe targets that set
-    soonest before they disappear below the horizon).
+    Sort order: ascending set-time (sort_by='set') or transit-time
+    (sort_by='transit'). Priority colour-coding is handled by the caller.
 
-    Returns the sorted DataFrame — the user decides when to observe each target.
+    Returns the sorted DataFrame.
     """
-    PRIORITY_RANK = {"URGENT": 0, "HIGH": 1, "MEDIUM": 2, "LOW": 3}
-
     df = df_obs.copy()
 
-    def _get_rank(val):
-        v = str(val).upper().strip()
-        for k, r in PRIORITY_RANK.items():
-            if k in v:
-                return r
-        return 4  # unassigned / blank
-
-    if pri_col and pri_col in df.columns:
-        df['_pri_rank'] = df[pri_col].apply(_get_rank)
-    else:
-        df['_pri_rank'] = 4
-
-    sort_cols = ['_pri_rank']
-    if '_set_datetime' in df.columns:
-        df['_set_sort'] = pd.to_datetime(df['_set_datetime'], errors='coerce', utc=True)
-        sort_cols.append('_set_sort')
-    df = df.sort_values(sort_cols, ascending=True, na_position='last')
+    sort_col = '_transit_datetime' if sort_by == 'transit' else '_set_datetime'
+    if sort_col in df.columns:
+        df['_time_sort'] = pd.to_datetime(df[sort_col], errors='coerce', utc=True)
+        df = df.sort_values('_time_sort', ascending=True, na_position='last')
 
     return df
 
