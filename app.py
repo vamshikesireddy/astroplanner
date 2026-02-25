@@ -1219,7 +1219,7 @@ with st.expander("ℹ️ How to Use"):
     Every section's **Observable** tab has a **📅 Night Plan Builder** expander. Use it to build a sorted target list for the night:
     *   **Sort by Set Time or Transit Time** — choose which to sort by using the radio; the same column also sets the minimum-time filter threshold.
     *   **Filter** by priority level, magnitude, event type, discovery recency, and Moon Status.
-    *   **Export** the plan as CSV or PDF (PDF is priority-colour-coded with deeplinks for each target).
+    *   **Export** the plan as CSV or PDF (PDF is priority-colour-coded; Cosmic Cataclysm PDFs also include `unistellar://` deeplinks).
     """)
 
 # ---------------------------
