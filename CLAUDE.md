@@ -445,7 +445,7 @@ Per-thread `set_event_loop()` does NOT work because Playwright creates its own e
 ```toml
 GITHUB_TOKEN = "ghp_..."          # fine-grained PAT: contents read/write, issues write
 ADMIN_PASSWORD = "..."            # gates all admin panels
-GITHUB_REPO = "vamshikesireddy/astro_coordinates"
+GITHUB_REPO = "vamshikesireddy/astroplanner"
 ```
 
 GitHub Actions uses the automatic `secrets.GITHUB_TOKEN` — no manual PAT needed for workflows.
