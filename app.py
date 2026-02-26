@@ -42,6 +42,7 @@ except ImportError:
 from backend.resolvers import resolve_simbad, resolve_horizons, get_horizons_ephemerides, resolve_planet, get_planet_ephemerides
 from backend.core import compute_trajectory, calculate_planning_info, azimuth_to_compass, moon_sep_deg
 from backend.scrape import scrape_unistellar_table, scrape_unistellar_priority_comets, scrape_unistellar_priority_asteroids
+from backend.github import create_issue as _gh_create_issue
 
 # Suppress Astropy warnings about coordinate frame transformations (Geocentric vs Topocentric)
 warnings.filterwarnings("ignore", message=".*transforming other coordinates.*")
@@ -91,6 +92,47 @@ def az_in_selected(az_deg: float, selected_dirs: set) -> bool:
             if lo <= az_deg < hi:
                 return True
     return False
+
+
+def _check_row_observability(sc, row_status, location, check_times, moon_loc, moon_locs_chk,
+                              moon_illum, min_alt, max_alt, az_dirs, min_moon_sep):
+    """Compute observability for a single target row.
+
+    Args:
+        sc:            SkyCoord of the target.
+        row_status:    Value of the 'Status' column (string, e.g. "Never Rises").
+        location:      EarthLocation of the observer.
+        check_times:   List of 3 datetime objects (start, mid, end of window).
+        moon_loc:      Moon coordinate at start time (or None if unavailable).
+        moon_locs_chk: List of moon coordinates at each check_time (or []).
+        moon_illum:    Moon illumination 0-100 float.
+        min_alt:       Minimum altitude filter (degrees).
+        max_alt:       Maximum altitude filter (degrees).
+        az_dirs:       Set of selected compass octant labels (empty = no filter).
+        min_moon_sep:  Minimum moon separation filter (degrees).
+
+    Returns:
+        (obs: bool, reason: str, moon_sep_str: str, moon_status_str: str)
+    """
+    _seps = [moon_sep_deg(sc, ml) for ml in moon_locs_chk] if moon_locs_chk else []
+    _min_sep = min(_seps) if _seps else (moon_sep_deg(sc, moon_loc) if moon_loc else 0.0)
+    _max_sep = max(_seps) if _seps else _min_sep
+    moon_sep_str    = f"{_min_sep:.1f}°–{_max_sep:.1f}°" if moon_loc else "–"
+    moon_status_str = get_moon_status(moon_illum, _min_sep) if moon_loc else ""
+
+    if str(row_status) == "Never Rises":
+        return False, "Never Rises", moon_sep_str, moon_status_str
+
+    obs, reason = False, "Not visible during window"
+    for i_t, t_chk in enumerate(check_times):
+        aa = sc.transform_to(AltAz(obstime=Time(t_chk), location=location))
+        if min_alt <= aa.alt.degree <= max_alt and (not az_dirs or az_in_selected(aa.az.degree, az_dirs)):
+            sep_ok = (not moon_locs_chk) or (moon_sep_deg(sc, moon_locs_chk[i_t]) >= min_moon_sep)
+            if sep_ok:
+                obs, reason = True, ""
+                break
+    return obs, reason, moon_sep_str, moon_status_str
+
 
 st.set_page_config(page_title="AstroPlanner", page_icon="🔭", layout="wide", initial_sidebar_state="expanded")
 
@@ -403,16 +445,15 @@ def _sort_df_like_chart(df, sort_option, priority_col=None):
 # Do NOT use a classic token with full repo or admin scopes.
 def _send_github_notification(title, body):
     """Creates a GitHub Issue to notify admin. Reusable across all sections."""
-    token = st.secrets.get("GITHUB_TOKEN")
-    repo_name = st.secrets.get("GITHUB_REPO")
-    if token and repo_name and Github:
-        try:
-            g = Github(token)
-            repo = g.get_repo(repo_name)
-            me = g.get_user()
-            repo.create_issue(title=title, body=body, assignee=me.login)
-        except Exception as e:
-            print(f"Failed to send notification: {e}")
+    try:
+        _gh_create_issue(
+            st.secrets.get("GITHUB_TOKEN"),
+            st.secrets.get("GITHUB_REPO"),
+            title,
+            body,
+        )
+    except Exception as e:
+        print(f"Failed to send notification: {e}")
 
 
 def _sanitize_csv_df(df: pd.DataFrame) -> pd.DataFrame:
@@ -592,6 +633,115 @@ def generate_plan_pdf(df_plan, night_start, night_end,
     doc.build(elems)
     buf.seek(0)
     return buf.getvalue()
+
+
+def _apply_night_plan_filters(
+    df,
+    pri_col, sel_pri,
+    vmag_col, vmag_range,
+    type_col, sel_types,
+    disc_col, disc_days,
+    local_tz, start_time, win_start_h, win_end_h,
+    sel_moon, all_moon_statuses,
+):
+    """Apply all night plan filters to df and return the filtered copy.
+
+    Filter order: priority → magnitude → type → discovery → window → moon status.
+
+    Parameters
+    ----------
+    df : DataFrame
+        Source observable targets (will be copied internally).
+    pri_col, sel_pri : str | None, list | None
+        Priority column name and selected priority levels.
+        Pass ``None`` for either to skip the priority filter.
+    vmag_col, vmag_range : str | None, tuple | None
+        Magnitude column name and (lo, hi) range tuple.
+        Pass ``None`` for either to skip the magnitude filter.
+    type_col, sel_types : str | None, list | None
+        Type column name and selected type values.
+        Pass ``None`` for either to skip the type filter.
+    disc_col, disc_days : str | None, int | None
+        Discovery-date column name and recency threshold in days.
+        Pass ``None`` for either (or ``disc_days=365``) to skip.
+    local_tz : tzinfo
+        Local timezone used to localise the observation window datetimes.
+    start_time : datetime
+        Tonight's start time (date component used to build window start).
+    win_start_h, win_end_h : int
+        Hour (24-h) for window start (tonight) and end (next morning).
+    sel_moon, all_moon_statuses : list | None, list
+        Selected Moon Status labels and the full list of statuses.
+        Filtering is skipped when ``sel_moon`` is ``None`` or equals
+        ``all_moon_statuses``.
+    """
+    out = df.copy()
+
+    # Filter: priority
+    if pri_col and pri_col in out.columns and sel_pri:
+        def _matches_pri(val):
+            v = str(val).upper().strip()
+            for p in sel_pri:
+                if p == "(unassigned)" and v in ('', 'NAN', 'NONE', 'N/A'):
+                    return True
+                elif p != "(unassigned)" and p in v:
+                    return True
+            return False
+        out = out[out[pri_col].apply(_matches_pri)]
+
+    # Filter: magnitude
+    if vmag_col and vmag_col in out.columns and vmag_range is not None:
+        _mag_num = pd.to_numeric(out[vmag_col], errors='coerce')
+        out = out[
+            _mag_num.isna() |
+            _mag_num.between(vmag_range[0], vmag_range[1], inclusive='both')
+        ]
+
+    # Filter: type/class
+    if type_col and type_col in out.columns and sel_types is not None:
+        out = out[out[type_col].astype(str).isin(sel_types)]
+
+    # Filter: discovery recency
+    if (disc_col and disc_col in out.columns
+            and disc_days is not None and disc_days < 365):
+        _disc_parsed = pd.to_datetime(out[disc_col], errors='coerce', utc=True)
+        _disc_cutoff = pd.Timestamp(
+            datetime.now(tz=pytz.utc) - timedelta(days=disc_days)
+        )
+        out = out[_disc_parsed.isna() | (_disc_parsed >= _disc_cutoff)]
+
+    # Filter: observation window — start is tonight, end is always next morning
+    _win_start_dt = local_tz.localize(
+        datetime(start_time.year, start_time.month, start_time.day, win_start_h, 0)
+    )
+    _win_end_dt = local_tz.localize(
+        datetime(start_time.year, start_time.month, start_time.day, win_end_h, 0)
+        + timedelta(days=1)
+    )
+
+    def _in_obs_window(row):
+        status = str(row.get('Status', ''))
+        if 'Always Up' in status:
+            return True
+        r = row.get('_rise_datetime')
+        s = row.get('_set_datetime')
+        if pd.isnull(r) or pd.isnull(s):
+            return True  # keep if timing unknown
+        try:
+            # Visible during window if rises before window ends AND sets after window starts
+            return r < _win_end_dt and s > _win_start_dt
+        except (TypeError, ValueError):
+            return True
+
+    if '_rise_datetime' in out.columns and '_set_datetime' in out.columns:
+        out = out[out.apply(_in_obs_window, axis=1)]
+
+    # Filter: Moon Status
+    if (sel_moon is not None and 'Moon Status' in out.columns
+            and len(sel_moon) < len(all_moon_statuses)):
+        out = out[out['Moon Status'].isin(sel_moon)]
+
+    return out
 
 
 def _render_night_plan_builder(
@@ -778,80 +928,16 @@ def _render_night_plan_builder(
         if df_obs.empty:
             st.warning("No observable targets to plan.")
         else:
-            _plan_src = df_obs.copy()
-
-            # Filter: priority
-            if pri_col and pri_col in _plan_src.columns and _sel_pri:
-                def _matches_pri(val):
-                    v = str(val).upper().strip()
-                    for p in _sel_pri:
-                        if p == "(unassigned)" and v in ('', 'NAN', 'NONE', 'N/A'):
-                            return True
-                        elif p != "(unassigned)" and p in v:
-                            return True
-                    return False
-                _plan_src = _plan_src[_plan_src[pri_col].apply(_matches_pri)]
-
-            # Filter: magnitude
-            if vmag_col and vmag_col in _plan_src.columns and _vmag_range is not None:
-                _mag_num = pd.to_numeric(_plan_src[vmag_col], errors='coerce')
-                _plan_src = _plan_src[
-                    _mag_num.isna() |
-                    _mag_num.between(_vmag_range[0], _vmag_range[1], inclusive='both')
-                ]
-
-            # Filter: type/class
-            if type_col and type_col in _plan_src.columns and _sel_types is not None:
-                _plan_src = _plan_src[
-                    _plan_src[type_col].astype(str).isin(_sel_types)
-                ]
-
-            # Filter: discovery recency
-            if (disc_col and disc_col in _plan_src.columns
-                    and _disc_days is not None and _disc_days < 365):
-                _disc_parsed = pd.to_datetime(
-                    _plan_src[disc_col], errors='coerce', utc=True
-                )
-                _disc_cutoff = pd.Timestamp(
-                    datetime.now(tz=pytz.utc) - timedelta(days=_disc_days)
-                )
-                _plan_src = _plan_src[
-                    _disc_parsed.isna() | (_disc_parsed >= _disc_cutoff)
-                ]
-
-            # Filter: observation window — start is tonight, end is always next morning
-            if True:
-                _win_start_dt = local_tz.localize(
-                    datetime(start_time.year, start_time.month, start_time.day, _win_start_h, 0)
-                )
-                _win_end_dt = local_tz.localize(
-                    datetime(start_time.year, start_time.month, start_time.day, _win_end_h, 0)
-                    + timedelta(days=1)
-                )
-
-                def _in_obs_window(row):
-                    status = str(row.get('Status', ''))
-                    if 'Always Up' in status:
-                        return True
-                    r = row.get('_rise_datetime')
-                    s = row.get('_set_datetime')
-                    if pd.isnull(r) or pd.isnull(s):
-                        return True  # keep if timing unknown
-                    try:
-                        # Visible during window if rises before window ends AND sets after window starts
-                        return r < _win_end_dt and s > _win_start_dt
-                    except (TypeError, ValueError):
-                        return True
-
-                if '_rise_datetime' in _plan_src.columns and '_set_datetime' in _plan_src.columns:
-                    _plan_src = _plan_src[_plan_src.apply(_in_obs_window, axis=1)]
-
-            # Filter: Moon Status
-            if (_sel_moon is not None and 'Moon Status' in _plan_src.columns
-                    and len(_sel_moon) < len(_all_moon_statuses)):
-                _plan_src = _plan_src[
-                    _plan_src['Moon Status'].isin(_sel_moon)
-                ]
+            _plan_src = _apply_night_plan_filters(
+                df=df_obs,
+                pri_col=pri_col,        sel_pri=_sel_pri,
+                vmag_col=vmag_col,      vmag_range=_vmag_range,
+                type_col=type_col,      sel_types=_sel_types,
+                disc_col=disc_col,      disc_days=_disc_days,
+                local_tz=local_tz,      start_time=start_time,
+                win_start_h=_win_start_h, win_end_h=_win_end_h,
+                sel_moon=_sel_moon,     all_moon_statuses=_all_moon_statuses,
+            )
 
             if _plan_src.empty:
                 st.warning("No observable targets match the selected filters.")
@@ -991,30 +1077,16 @@ def _get_comet_jpl_id(name):
 
 @st.cache_data(ttl=3600, show_spinner=False)
 def load_comets_config():
-    if os.path.exists(COMETS_FILE):
-        with open(COMETS_FILE, "r") as f:
-            data = yaml.safe_load(f) or {}
-    else:
-        data = {}
-    data.setdefault("comets", [])
-    data.setdefault("unistellar_priority", [])
-    data.setdefault("priorities", {})
-    data.setdefault("cancelled", [])
-    return data
+    from backend.config import read_comets_config
+    return read_comets_config(COMETS_FILE)
 
 
 @st.cache_data(ttl=3600, show_spinner=False)
 def load_comet_catalog():
     """Loads the MPC comet catalog snapshot for Explore Catalog mode.
     Returns (updated_str, entries_list) or (None, []) if not downloaded yet."""
-    if not os.path.exists(COMET_CATALOG_FILE):
-        return None, []
-    try:
-        with open(COMET_CATALOG_FILE, "r", encoding="utf-8") as f:
-            data = json.load(f)
-        return data.get("updated"), data.get("comets", [])
-    except Exception:
-        return None, []
+    from backend.config import read_comet_catalog
+    return read_comet_catalog(COMET_CATALOG_FILE)
 
 
 def save_comets_config(config):
@@ -1120,16 +1192,8 @@ def _asteroid_jpl_id(name):
 
 @st.cache_data(ttl=3600, show_spinner=False)
 def load_asteroids_config():
-    if os.path.exists(ASTEROIDS_FILE):
-        with open(ASTEROIDS_FILE, "r") as f:
-            data = yaml.safe_load(f) or {}
-    else:
-        data = {}
-    data.setdefault("asteroids", [])
-    data.setdefault("unistellar_priority", [])
-    data.setdefault("priorities", {})
-    data.setdefault("cancelled", [])
-    return data
+    from backend.config import read_asteroids_config
+    return read_asteroids_config(ASTEROIDS_FILE)
 
 
 def save_asteroids_config(config):
@@ -1207,15 +1271,8 @@ DSO_FILE = "dso_targets.yaml"
 @st.cache_data(ttl=3600, show_spinner=False)
 def load_dso_config():
     """Load curated DSO catalog (Messier, Bright Stars, Astrophotography Favorites) from YAML."""
-    if os.path.exists(DSO_FILE):
-        with open(DSO_FILE, "r") as f:
-            data = yaml.safe_load(f) or {}
-    else:
-        data = {}
-    data.setdefault("messier", [])
-    data.setdefault("bright_stars", [])
-    data.setdefault("astrophotography_favorites", [])
-    return data
+    from backend.config import read_dso_config
+    return read_dso_config(DSO_FILE)
 
 
 @st.cache_data(ttl=3600, show_spinner="Calculating DSO visibility...")
@@ -1647,7 +1704,14 @@ sky_coord = None
 resolved = False
 
 
-if target_mode == "Star/Galaxy/Nebula (SIMBAD)":
+def render_dso_section(location, start_time, duration, min_alt, max_alt, az_dirs,
+                       min_moon_sep, min_dec, max_dec, moon_loc, moon_illum,
+                       show_obs_window, obs_start_naive, obs_end_naive, local_tz,
+                       lat, lon):
+    name = "Unknown"
+    sky_coord = None
+    resolved = False
+
     dso_config = load_dso_config()
 
     # --- Category & Type Filters ---
@@ -1703,30 +1767,20 @@ if target_mode == "Star/Galaxy/Nebula (SIMBAD)":
                         start_time + timedelta(minutes=duration / 2),
                         start_time + timedelta(minutes=duration)
                     ]
-                    moon_locs_chk = []
+                    _mlocs = []
                     if moon_loc:
                         try:
-                            moon_locs_chk = [get_moon(Time(t), location_d) for t in check_times]
+                            _mlocs = [get_moon(Time(t), location_d) for t in check_times]
                         except Exception:
-                            moon_locs_chk = [moon_loc] * 3
-                    _seps = [moon_sep_deg(sc, ml) for ml in moon_locs_chk] if moon_locs_chk else []
-                    _min_sep = min(_seps) if _seps else (moon_sep_deg(sc, moon_loc) if moon_loc else 0.0)
-                    _max_sep = max(_seps) if _seps else _min_sep
-                    moon_sep_list.append(f"{_min_sep:.1f}°–{_max_sep:.1f}°" if moon_loc else "–")
-                    moon_status_list.append(get_moon_status(moon_illum, _min_sep) if moon_loc else "")
-                    obs, reason = False, "Not visible during window"
-                    if str(row.get('Status', '')) == "Never Rises":
-                        reason = "Never Rises"
-                    else:
-                        for i_t, t_chk in enumerate(check_times):
-                            aa = sc.transform_to(AltAz(obstime=Time(t_chk), location=location_d))
-                            if min_alt <= aa.alt.degree <= max_alt and (not az_dirs or az_in_selected(aa.az.degree, az_dirs)):
-                                sep_ok = (not moon_locs_chk) or (moon_sep_deg(sc, moon_locs_chk[i_t]) >= min_moon_sep)
-                                if sep_ok:
-                                    obs, reason = True, ""
-                                    break
+                            _mlocs = [moon_loc] * 3
+                    obs, reason, ms, mst = _check_row_observability(
+                        sc, row.get('Status', ''), location_d, check_times,
+                        moon_loc, _mlocs, moon_illum, min_alt, max_alt, az_dirs, min_moon_sep
+                    )
                     is_obs_list.append(obs)
                     reason_list.append(reason)
+                    moon_sep_list.append(ms)
+                    moon_status_list.append(mst)
                 except Exception:
                     is_obs_list.append(False)
                     reason_list.append("Parse Error")
@@ -1864,7 +1918,17 @@ if target_mode == "Star/Galaxy/Nebula (SIMBAD)":
             )
             resolved = True
 
-elif target_mode == "Planet (JPL Horizons)":
+    return name, sky_coord, resolved, None
+
+
+def render_planet_section(location, start_time, duration, min_alt, max_alt, az_dirs,
+                          min_moon_sep, min_dec, max_dec, moon_loc, moon_illum,
+                          show_obs_window, obs_start_naive, obs_end_naive, local_tz,
+                          lat, lon):
+    name = "Unknown"
+    sky_coord = None
+    resolved = False
+
     planet_map = {
         "Mercury": "199",
         "Venus": "299",
@@ -1875,46 +1939,35 @@ elif target_mode == "Planet (JPL Horizons)":
         "Neptune": "899",
         "Pluto": "999"
     }
-    
+
     if lat is None or lon is None:
         st.info("Set location in sidebar to see visibility summary for all planets.")
     else:
         df_planets = get_planet_summary(lat, lon, start_time)
         if not df_planets.empty:
             # --- Observability check ---
-            location = EarthLocation(lat=lat*u.deg, lon=lon*u.deg)
             is_obs_list, reason_list, moon_sep_list, moon_status_list = [], [], [], []
 
             for idx, row in df_planets.iterrows():
                 try:
                     sc = SkyCoord(row['RA'], row['Dec'], frame='icrs')
                     check_times = [start_time, start_time + timedelta(minutes=duration/2), start_time + timedelta(minutes=duration)]
-                    moon_locs = []
+                    _mlocs = []
                     if moon_loc:
                         try:
-                            moon_locs = [get_moon(Time(t), location) for t in check_times]
+                            _mlocs = [get_moon(Time(t), location) for t in check_times]
                         except Exception:
-                            moon_locs = [moon_loc] * 3
-                    _seps = [moon_sep_deg(sc, ml) for ml in moon_locs] if moon_locs else []
-                    _min_sep = min(_seps) if _seps else (moon_sep_deg(sc, moon_loc) if moon_loc else 0.0)
-                    _max_sep = max(_seps) if _seps else _min_sep
-                    moon_sep_list.append(f"{_min_sep:.1f}°–{_max_sep:.1f}°" if moon_loc else "–")
-                    moon_status_list.append(get_moon_status(moon_illum, _min_sep) if moon_loc else "")
-                    obs, reason = False, "Not visible during window"
-                    if str(row.get('Status', '')) == "Never Rises":
-                        reason = "Never Rises"
-                    else:
-                        for i, t_check in enumerate(check_times):
-                            aa = sc.transform_to(AltAz(obstime=Time(t_check), location=location))
-                            if min_alt <= aa.alt.degree <= max_alt and (not az_dirs or az_in_selected(aa.az.degree, az_dirs)):
-                                sep_ok = (not moon_locs) or (moon_sep_deg(sc, moon_locs[i]) >= min_moon_sep)
-                                if sep_ok:
-                                    obs, reason = True, ""
-                                    break
+                            _mlocs = [moon_loc] * 3
+                    obs, reason, ms, mst = _check_row_observability(
+                        sc, row.get('Status', ''), location, check_times,
+                        moon_loc, _mlocs, moon_illum, min_alt, max_alt, az_dirs, min_moon_sep
+                    )
                     is_obs_list.append(obs)
                     reason_list.append(reason)
+                    moon_sep_list.append(ms)
+                    moon_status_list.append(mst)
                 except Exception:
-                    is_obs_list.append(True)   # keep on error (same as before)
+                    is_obs_list.append(True)   # keep on error (planets stay visible by default)
                     reason_list.append("")
                     moon_sep_list.append("–")
                     moon_status_list.append("")
@@ -1975,16 +2028,16 @@ elif target_mode == "Planet (JPL Horizons)":
                     st.dataframe(df_filt_p[show_filt_p], hide_index=True, width="stretch")
 
     selected_target = st.selectbox("Select a Planet", list(planet_map.keys()))
-    
+
     # Use JPL Horizons IDs to avoid ambiguity (e.g. Mercury vs Mercury Barycenter)
     obj_name = planet_map[selected_target]
-    
+
     if obj_name:
         try:
             with st.spinner(f"Querying JPL Horizons for {selected_target}..."):
                 utc_start = start_time.astimezone(pytz.utc)
                 _, sky_coord = resolve_planet(obj_name, obs_time_str=utc_start.strftime('%Y-%m-%d %H:%M:%S'))
-            
+
             name = selected_target
             st.success(f"✅ Resolved: **{name}**")
             resolved = True
@@ -1992,7 +2045,18 @@ elif target_mode == "Planet (JPL Horizons)":
             print(f"[ERROR] JPL planet resolve failed for '{obj_name}': {e}", file=sys.stderr)
             st.error("Could not fetch position data from JPL. Please try again.")
 
-elif target_mode == "Comet (JPL Horizons)":
+    return name, sky_coord, resolved, obj_name
+
+
+def render_comet_section(location, start_time, duration, min_alt, max_alt, az_dirs,
+                         min_moon_sep, min_dec, max_dec, moon_loc, moon_illum,
+                         show_obs_window, obs_start_naive, obs_end_naive, local_tz,
+                         lat, lon):
+    name = "Unknown"
+    sky_coord = None
+    resolved = False
+    obj_name = None
+
     _comet_view = st.radio(
         "View", ["\U0001f4cb Watchlist", "\U0001f52d Explore Catalog"],
         horizontal=True, key="comet_view_mode"
@@ -2302,30 +2366,20 @@ elif target_mode == "Comet (JPL Horizons)":
                             start_time + timedelta(minutes=duration / 2),
                             start_time + timedelta(minutes=duration)
                         ]
-                        moon_locs_chk = []
+                        _mlocs = []
                         if moon_loc:
                             try:
-                                moon_locs_chk = [get_moon(Time(t), location_c) for t in check_times]
+                                _mlocs = [get_moon(Time(t), location_c) for t in check_times]
                             except Exception:
-                                moon_locs_chk = [moon_loc] * 3
-                        _seps = [moon_sep_deg(sc, ml) for ml in moon_locs_chk] if moon_locs_chk else []
-                        _min_sep = min(_seps) if _seps else (moon_sep_deg(sc, moon_loc) if moon_loc else 0.0)
-                        _max_sep = max(_seps) if _seps else _min_sep
-                        moon_sep_list.append(f"{_min_sep:.1f}°–{_max_sep:.1f}°" if moon_loc else "–")
-                        moon_status_list.append(get_moon_status(moon_illum, _min_sep) if moon_loc else "")
-                        obs, reason = False, "Not in window (Alt/Az/Moon)"
-                        if str(row.get('Status', '')) == "Never Rises":
-                            reason = "Never Rises"
-                        else:
-                            for i, t_chk in enumerate(check_times):
-                                aa = sc.transform_to(AltAz(obstime=Time(t_chk), location=location_c))
-                                if min_alt <= aa.alt.degree <= max_alt and (not az_dirs or az_in_selected(aa.az.degree, az_dirs)):
-                                    sep_ok = (not moon_locs_chk) or (moon_sep_deg(sc, moon_locs_chk[i]) >= min_moon_sep)
-                                    if sep_ok:
-                                        obs, reason = True, ""
-                                        break
+                                _mlocs = [moon_loc] * 3
+                        obs, reason, ms, mst = _check_row_observability(
+                            sc, row.get('Status', ''), location_c, check_times,
+                            moon_loc, _mlocs, moon_illum, min_alt, max_alt, az_dirs, min_moon_sep
+                        )
                         is_obs_list.append(obs)
                         reason_list.append(reason)
+                        moon_sep_list.append(ms)
+                        moon_status_list.append(mst)
                     except Exception:
                         is_obs_list.append(False)
                         reason_list.append("Parse Error")
@@ -2438,7 +2492,6 @@ elif target_mode == "Comet (JPL Horizons)":
             except Exception as e:
                 print(f"[ERROR] JPL Horizons comet resolve failed for '{obj_name}': {e}", file=sys.stderr)
                 st.error("Could not fetch position data from JPL. Please try again.")
-
 
     elif _comet_view == "\U0001f52d Explore Catalog":
         cat_updated, cat_entries = load_comet_catalog()
@@ -2647,8 +2700,18 @@ elif target_mode == "Comet (JPL Horizons)":
             else:
                 st.caption("Adjust filters above to find comets, then select one for a trajectory.")
 
+    return name, sky_coord, resolved, obj_name
 
-elif target_mode == "Asteroid (JPL Horizons)":
+
+def render_asteroid_section(location, start_time, duration, min_alt, max_alt, az_dirs,
+                            min_moon_sep, min_dec, max_dec, moon_loc, moon_illum,
+                            show_obs_window, obs_start_naive, obs_end_naive, local_tz,
+                            lat, lon):
+    name = "Unknown"
+    sky_coord = None
+    resolved = False
+    obj_name = None
+
     asteroid_config = load_asteroids_config()
     active_asteroids = [a for a in asteroid_config["asteroids"] if a not in asteroid_config.get("cancelled", [])]
     priority_set = set(_asteroid_priority_name(e) for e in asteroid_config.get("unistellar_priority", []))
@@ -2940,30 +3003,20 @@ elif target_mode == "Asteroid (JPL Horizons)":
                         start_time + timedelta(minutes=duration / 2),
                         start_time + timedelta(minutes=duration)
                     ]
-                    moon_locs_chk = []
+                    _mlocs = []
                     if moon_loc:
                         try:
-                            moon_locs_chk = [get_moon(Time(t), location_a) for t in check_times]
+                            _mlocs = [get_moon(Time(t), location_a) for t in check_times]
                         except Exception:
-                            moon_locs_chk = [moon_loc] * 3
-                    _seps = [moon_sep_deg(sc, ml) for ml in moon_locs_chk] if moon_locs_chk else []
-                    _min_sep = min(_seps) if _seps else (moon_sep_deg(sc, moon_loc) if moon_loc else 0.0)
-                    _max_sep = max(_seps) if _seps else _min_sep
-                    moon_sep_list.append(f"{_min_sep:.1f}°–{_max_sep:.1f}°" if moon_loc else "–")
-                    moon_status_list.append(get_moon_status(moon_illum, _min_sep) if moon_loc else "")
-                    obs, reason = False, "Not visible during window"
-                    if str(row.get('Status', '')) == "Never Rises":
-                        reason = "Never Rises"
-                    else:
-                        for i_t, t_chk in enumerate(check_times):
-                            aa = sc.transform_to(AltAz(obstime=Time(t_chk), location=location_a))
-                            if min_alt <= aa.alt.degree <= max_alt and (not az_dirs or az_in_selected(aa.az.degree, az_dirs)):
-                                sep_ok = (not moon_locs_chk) or (moon_sep_deg(sc, moon_locs_chk[i_t]) >= min_moon_sep)
-                                if sep_ok:
-                                    obs, reason = True, ""
-                                    break
+                            _mlocs = [moon_loc] * 3
+                    obs, reason, ms, mst = _check_row_observability(
+                        sc, row.get('Status', ''), location_a, check_times,
+                        moon_loc, _mlocs, moon_illum, min_alt, max_alt, az_dirs, min_moon_sep
+                    )
                     is_obs_list.append(obs)
                     reason_list.append(reason)
+                    moon_sep_list.append(ms)
+                    moon_status_list.append(mst)
                 except Exception:
                     is_obs_list.append(False)
                     reason_list.append("Parse Error")
@@ -3077,10 +3130,21 @@ elif target_mode == "Asteroid (JPL Horizons)":
             print(f"[ERROR] JPL Horizons asteroid resolve failed for '{obj_name}': {e}", file=sys.stderr)
             st.error("Could not fetch position data from JPL. Please try again.")
 
-elif target_mode == "Cosmic Cataclysm":
+    return name, sky_coord, resolved, obj_name
+
+
+def render_cosmic_section(location, start_time, duration, min_alt, max_alt, az_dirs,
+                          min_moon_sep, min_dec, max_dec, moon_loc, moon_illum,
+                          show_obs_window, obs_start_naive, obs_end_naive, local_tz,
+                          lat, lon):
+    name = "Unknown"
+    sky_coord = None
+    resolved = False
+    obj_name = None
+
     status_msg = st.empty()
     status_msg.info("Fetching latest alerts from Unistellar...")
-    
+
     # --- Global Configuration (YAML) ---
     TARGETS_FILE = "targets.yaml"
     PENDING_FILE = "pending_requests.txt"
@@ -3095,17 +3159,17 @@ elif target_mode == "Cosmic Cataclysm":
         # 1. Save locally (for immediate use)
         with open(TARGETS_FILE, "w") as f:
             yaml.dump(config, f, default_flow_style=False)
-            
+
         # 2. Sync to GitHub (for persistence)
         token = st.secrets.get("GITHUB_TOKEN")
         repo_name = st.secrets.get("GITHUB_REPO")
-        
+
         if token and repo_name and Github:
             try:
                 g = Github(token)
                 repo = g.get_repo(repo_name)
                 yaml_str = yaml.dump(config, default_flow_style=False)
-                
+
                 try:
                     contents = repo.get_contents(TARGETS_FILE)
                     repo.update_file(contents.path, "Update targets.yaml (Admin)", yaml_str, contents.sha)
@@ -3120,7 +3184,7 @@ elif target_mode == "Cosmic Cataclysm":
         """Creates a GitHub Issue to notify admin of new requests."""
         token = st.secrets.get("GITHUB_TOKEN")
         repo_name = st.secrets.get("GITHUB_REPO")
-        
+
         if token and repo_name and Github:
             try:
                 g = Github(token)
@@ -3134,9 +3198,9 @@ elif target_mode == "Cosmic Cataclysm":
     # 1. Report UI (Public)
     with st.expander("🚩 Report Invalid/Cancelled Event / Suggest Priority"):
         st.caption("Report invalid events or suggest priority changes.")
-        
+
         tab_block, tab_pri = st.tabs(["🚫 Block Target", "⭐ Suggest Priority"])
-        
+
         with tab_block:
             c1, c2 = st.columns([2, 1])
             b_name = c1.text_input("Event Name", key="rep_b_name")
@@ -3145,10 +3209,10 @@ elif target_mode == "Cosmic Cataclysm":
                 if b_name:
                     with open(PENDING_FILE, "a") as f:
                         f.write(f"{b_name.replace('|', '\\|')}|{b_reason}\n")
-                    
+
                     send_notification(f"🚫 Block Request: {b_name}", f"**Target:** {b_name}\n**Reason:** {b_reason}\n\n_Submitted via Astro Planner App_")
                     st.success(f"Report for '{b_name}' submitted.")
-        
+
         with tab_pri:
             c1, c2 = st.columns([2, 1])
             p_name = c1.text_input("Event Name", key="rep_p_name")
@@ -3157,7 +3221,7 @@ elif target_mode == "Cosmic Cataclysm":
                 if p_name:
                     with open(PENDING_FILE, "a") as f:
                         f.write(f"{p_name.replace('|', '\\|')}|Priority: {p_val}\n")
-                    
+
                     send_notification(f"⭐ Priority Request: {p_name}", f"**Target:** {p_name}\n**New Priority:** {p_val}\n\n_Submitted via Astro Planner App_")
                     st.success(f"Priority for '{p_name}' submitted.")
 
@@ -3174,13 +3238,13 @@ elif target_mode == "Cosmic Cataclysm":
     if current_config.get("cancelled") or current_config.get("too_faint"):
         with st.expander("🚫 Invalid & Cancelled Events"):
             st.caption("These targets are hidden from the main list:")
-            
+
             blocked_data = []
             for t in current_config.get("cancelled", []):
                 blocked_data.append({"Target": t, "Reason": "Cancelled"})
             for t in current_config.get("too_faint", []):
                 blocked_data.append({"Target": t, "Reason": "Invalid (Too Faint)"})
-            
+
             if blocked_data:
                 st.dataframe(pd.DataFrame(blocked_data), hide_index=True, width="stretch")
 
@@ -3190,7 +3254,7 @@ elif target_mode == "Cosmic Cataclysm":
         with st.expander("🔐 Admin Review"):
             admin_pass = st.text_input("Admin Password", type="password", key="admin_pass_input")
             correct_pass = st.secrets.get("ADMIN_PASSWORD")
-            
+
             if correct_pass and admin_pass == correct_pass:
                 # --- Pending Requests ---
                 st.markdown("### Pending Requests")
@@ -3202,18 +3266,18 @@ elif target_mode == "Cosmic Cataclysm":
 
                 if not lines:
                     st.info("No pending requests.")
-                
+
                 for i, line in enumerate(lines):
                     parts = line.split('|')
                     if len(parts) != 2: continue
                     r_name, r_reason = parts
-                    
+
                     st.text(f"{r_name} ({r_reason})")
                     c1, c2 = st.columns(2)
-                    
+
                     if c1.button("✅ Accept", key=f"acc_{i}_{r_name}"):
                         config = load_targets_config()
-                        
+
                         if r_reason.startswith("Priority:"):
                             # Handle Priority
                             val = r_reason.split(":")[1].strip()
@@ -3229,23 +3293,23 @@ elif target_mode == "Cosmic Cataclysm":
                             if key not in config: config[key] = []
                             if r_name not in config[key]:
                                 config[key].append(r_name)
-                        
+
                         save_targets_config(config)
-                        
+
                         # Remove from pending
                         remaining = [l for l in lines if l != line]
                         with open(PENDING_FILE, "w") as f: f.write("\n".join(remaining) + "\n")
                         st.rerun()
-                        
+
                     if c2.button("❌ Reject", key=f"rej_{i}_{r_name}"):
                         remaining = [l for l in lines if l != line]
                         with open(PENDING_FILE, "w") as f: f.write("\n".join(remaining) + "\n")
                         st.rerun()
-                
+
                 # --- Priority Management ---
                 st.markdown("---")
                 st.markdown("### Manage Priorities")
-                
+
                 # List existing priorities with delete option
                 config = load_targets_config()
                 if config.get("priorities"):
@@ -3257,7 +3321,7 @@ elif target_mode == "Cosmic Cataclysm":
                             del config["priorities"][t_name]
                             save_targets_config(config)
                             st.rerun()
-                
+
                 st.caption("Add New Manually:")
                 p_name = st.text_input("Target Name for Priority")
                 p_val = st.selectbox("New Priority", ["LOW", "HIGH", "URGENT"])
@@ -3330,26 +3394,26 @@ elif target_mode == "Cosmic Cataclysm":
         # Try to identify columns dynamically
         df_alerts.columns = df_alerts.columns.str.strip()
         cols = df_alerts.columns.tolist()
-        
+
         # Look for 'Name' (preferred) or 'Target'
         target_col = next((c for c in cols if c.lower() in ['name', 'target', 'object']), None)
         ra_col = next((c for c in cols if c.lower() in ['ra', 'r.a.']), None)
         dec_col = next((c for c in cols if c.lower() in ['dec', 'declination']), None)
-        
+
         if target_col:
             # --- Apply Configuration (Blocklist & Priorities) ---
             config = load_targets_config()
-            
+
             # 1. Blocking
             blocked_targets = config.get("cancelled", []) + config.get("too_faint", [])
             if blocked_targets:
                 # Filter out rows where target name contains any blocked string (case-insensitive)
                 df_alerts = df_alerts[~df_alerts[target_col].astype(str).apply(lambda x: any(b.lower() in x.lower() for b in blocked_targets))]
-            
+
             # 2. Priorities
             # Find Priority column (e.g., 'Pri', 'Priority')
             pri_col = next((c for c in cols if c.lower().startswith('pri')), None)
-            
+
             # If not found, create it so we can display priorities
             if not pri_col:
                 pri_col = "Priority"
@@ -3364,10 +3428,10 @@ elif target_mode == "Cosmic Cataclysm":
 
             # --- Calculate Planning Info for Table ---
             st.caption(f"Calculating visibility for {len(df_alerts)} targets based on your location...")
-            
+
             planning_data = []
             location = EarthLocation(lat=lat*u.deg, lon=lon*u.deg)
-            
+
             # Create a progress bar if there are many targets
             progress_bar = st.progress(0)
             total_rows = len(df_alerts)
@@ -3375,17 +3439,17 @@ elif target_mode == "Cosmic Cataclysm":
             for idx, row in df_alerts.iterrows():
                 # Update progress
                 if idx % 5 == 0: progress_bar.progress(min(idx / total_rows, 1.0))
-                
+
                 try:
                     # Parse coordinates
                     ra_val = row[ra_col]
                     dec_val = row[dec_col]
                     # Handle potential string formatting issues
                     sc = SkyCoord(str(ra_val), str(dec_val), frame='icrs')
-                    
+
                     # Calculate details
                     details = calculate_planning_info(sc, location, start_time)
-                    
+
                     # --- Observability Check ---
                     is_obs = True
                     filt_reason = ""
@@ -3450,12 +3514,12 @@ elif target_mode == "Cosmic Cataclysm":
                     d['is_observable'] = False
                     d['filter_reason'] = "Data/Parse Error"
                     planning_data.append(d)
-            
+
             progress_bar.empty()
-            
+
             # Create new enriched DataFrame
             df_display = pd.DataFrame(planning_data)
-            
+
             # Identify Duration column (keep numeric for correct sort; format applied via column_config)
             dur_col = next((c for c in df_display.columns if 'dur' in c.lower()), None)
 
@@ -3512,17 +3576,17 @@ elif target_mode == "Cosmic Cataclysm":
 
             # Reorder columns to put Name and Planning info first
             priority_cols = [target_col, 'Constellation', 'Rise', 'Transit', 'Set', 'Status']
-            
+
             # Ensure Priority is visible and upfront
             if pri_col and pri_col in df_display.columns:
                 priority_cols.insert(1, pri_col)
 
             other_cols = [c for c in df_display.columns if c not in priority_cols and c != link_col]
-            
+
             final_order = priority_cols + other_cols
             if link_col:
                 final_order.append(link_col)
-            
+
             df_display = df_display[final_order]
 
             # Dec filter: objects outside range go to Unobservable tab with reason
@@ -3536,16 +3600,16 @@ elif target_mode == "Cosmic Cataclysm":
             # Split Data
             df_obs = df_display[df_display['is_observable'] == True].copy()
             df_filt = df_display[df_display['is_observable'] == False].copy()
-            
+
             # Filter columns for display
             cols_to_remove_keywords = ['exposure', 'cadence', 'gain', 'exp', 'cad']
             actual_cols_to_drop = [
-                col for col in df_display.columns 
+                col for col in df_display.columns
                 if any(keyword in col.lower() for keyword in cols_to_remove_keywords) or col in ['is_observable', 'filter_reason']
             ]
             # Also drop hidden columns used for plotting
             hidden_cols = [c for c in df_display.columns if c.startswith('_')]
-            
+
             # Helper to style and display
             def display_styled_table(df_in):
                 _dt_in = df_in.copy()
@@ -3554,17 +3618,17 @@ elif target_mode == "Cosmic Cataclysm":
                 if disc_col and disc_col in _dt_in.columns and '_disc_sort' in _dt_in.columns:
                     _dt_in[disc_col] = _dt_in['_disc_sort']
                 final_table = _dt_in.drop(columns=actual_cols_to_drop + hidden_cols, errors='ignore')
-                
+
                 # Force DeepLink to the very end
                 curr_cols = final_table.columns.tolist()
                 p_cols = [c for c in priority_cols if c in curr_cols]
                 l_cols = [c for c in curr_cols if c == link_col]
                 o_cols = [c for c in curr_cols if c not in p_cols and c not in l_cols]
-                
+
                 # Order: Priority -> Others -> DeepLink
                 new_order = p_cols + o_cols + l_cols
                 final_table = final_table[new_order]
-                
+
                 # Configure columns
                 col_config = dict(_MOON_SEP_COL_CONFIG)
                 if link_col and link_col in final_table.columns:
@@ -3595,7 +3659,7 @@ elif target_mode == "Cosmic Cataclysm":
 
             # Tabs
             tab_obs, tab_filt = st.tabs([f"🎯 Observable ({len(df_obs)})", f"👻 Unobservable ({len(df_filt)})"])
-            
+
             with tab_obs:
                 st.subheader("Available Targets")
 
@@ -3614,7 +3678,7 @@ elif target_mode == "Cosmic Cataclysm":
                 <span style='background-color: #ffb74d; color: black; padding: 2px 6px; border-radius: 4px;'>HIGH</span>
                 <span style='background-color: #c8e6c9; color: black; padding: 2px 6px; border-radius: 4px;'>LOW</span>
                 """, unsafe_allow_html=True)
-            
+
             with tab_filt:
                 st.caption("Targets hidden because they do not meet criteria within the **Observation Window** (Start Time + Duration) selected in the sidebar.")
                 if not df_filt.empty:
@@ -3651,16 +3715,16 @@ elif target_mode == "Cosmic Cataclysm":
             st.subheader("Select Target for Trajectory")
             targets = df_display[target_col].unique()
             obj_name = st.selectbox("Select Target", targets)
-            
+
             if obj_name:
                 row = df_alerts[df_alerts[target_col] == obj_name].iloc[0]
                 name = obj_name
-                
+
                 if ra_col and dec_col:
                     ra_val = row[ra_col]
                     dec_val = row[dec_col]
                     st.caption(f"Coordinates: RA {ra_val}, Dec {dec_val}")
-                    
+
                     try:
                         # Handle potential string formatting issues
                         sky_coord = SkyCoord(str(ra_val), str(dec_val), frame='icrs')
@@ -3674,6 +3738,44 @@ elif target_mode == "Cosmic Cataclysm":
             st.dataframe(df_alerts, width="stretch")
     elif lat is not None and lon is not None:
         st.error("Failed to scrape data. Please check the scraper logs.")
+
+    return name, sky_coord, resolved, obj_name
+
+
+if target_mode == "Star/Galaxy/Nebula (SIMBAD)":
+    name, sky_coord, resolved, _ = render_dso_section(
+        location, start_time, duration, min_alt, max_alt, az_dirs,
+        min_moon_sep, min_dec, max_dec, moon_loc, moon_illum,
+        show_obs_window, obs_start_naive, obs_end_naive, local_tz, lat, lon
+    )
+
+elif target_mode == "Planet (JPL Horizons)":
+    name, sky_coord, resolved, obj_name = render_planet_section(
+        location, start_time, duration, min_alt, max_alt, az_dirs,
+        min_moon_sep, min_dec, max_dec, moon_loc, moon_illum,
+        show_obs_window, obs_start_naive, obs_end_naive, local_tz, lat, lon
+    )
+
+elif target_mode == "Comet (JPL Horizons)":
+    name, sky_coord, resolved, obj_name = render_comet_section(
+        location, start_time, duration, min_alt, max_alt, az_dirs,
+        min_moon_sep, min_dec, max_dec, moon_loc, moon_illum,
+        show_obs_window, obs_start_naive, obs_end_naive, local_tz, lat, lon
+    )
+
+elif target_mode == "Asteroid (JPL Horizons)":
+    name, sky_coord, resolved, obj_name = render_asteroid_section(
+        location, start_time, duration, min_alt, max_alt, az_dirs,
+        min_moon_sep, min_dec, max_dec, moon_loc, moon_illum,
+        show_obs_window, obs_start_naive, obs_end_naive, local_tz, lat, lon
+    )
+
+elif target_mode == "Cosmic Cataclysm":
+    name, sky_coord, resolved, obj_name = render_cosmic_section(
+        location, start_time, duration, min_alt, max_alt, az_dirs,
+        min_moon_sep, min_dec, max_dec, moon_loc, moon_illum,
+        show_obs_window, obs_start_naive, obs_end_naive, local_tz, lat, lon
+    )
 
 elif target_mode == "Manual RA/Dec":
     col1, col2, col3 = st.columns(3)

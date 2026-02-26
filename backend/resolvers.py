@@ -6,6 +6,45 @@ from datetime import timedelta
 from astroquery.simbad import Simbad
 from astroquery.jplhorizons import Horizons
 
+def _horizons_query(obj_name, location_code, epochs, closest_apparition=True):
+    """Query JPL Horizons with 3-level fallback.
+
+    epochs: float (JD) for single-time queries, or dict with start/stop/step for ranges.
+    Returns the ephemerides result table.
+    Raises RuntimeError if all attempts fail.
+    """
+    ca_kwargs = {"closest_apparition": True} if closest_apparition else {}
+
+    # Attempt 1: id_type='smallbody'
+    try:
+        obj = Horizons(id=obj_name, location=location_code, epochs=epochs, id_type='smallbody')
+        return obj.ephemerides(**ca_kwargs)
+    except Exception:
+        pass
+
+    # Attempt 2: no id_type (generic search string)
+    try:
+        obj = Horizons(id=obj_name, location=location_code, epochs=epochs)
+        return obj.ephemerides(**ca_kwargs)
+    except Exception:
+        pass
+
+    # Attempt 3: regex-extracted short ID with three sub-fallbacks
+    match = re.search(r"^(\d+[PDCX]|P/\d{4} [A-Z0-9]+|C/\d{4} [A-Z0-9]+|\d+)", obj_name)
+    if not match:
+        raise RuntimeError(f"All Horizons attempts failed for {obj_name!r}")
+
+    short_id = match.group(1)
+    for id_type in ('smallbody', 'designation', None):
+        try:
+            kw = {"id_type": id_type} if id_type is not None else {}
+            obj = Horizons(id=short_id, location=location_code, epochs=epochs, **kw)
+            return obj.ephemerides(**ca_kwargs)
+        except Exception:
+            pass
+
+    raise RuntimeError(f"All Horizons attempts failed for {obj_name!r} (short: {short_id!r})")
+
 def resolve_simbad(obj_name):
     """Resolves an object name using SIMBAD."""
     try:
@@ -33,37 +72,10 @@ def resolve_horizons(obj_name, obs_time_str="2026-02-13 00:30:00", location_code
     """Resolves a solar system body using JPL Horizons."""
     try:
         obs_time = Time(obs_time_str)
-        try:
-            obj = Horizons(id=obj_name, location=location_code, epochs=obs_time.jd, id_type='smallbody')
-            result = obj.ephemerides(closest_apparition=True)
-        except Exception:
-            try:
-                # Fallback 1: try without id_type (allows search strings like "4 Vesta")
-                obj = Horizons(id=obj_name, location=location_code, epochs=obs_time.jd)
-                result = obj.ephemerides(closest_apparition=True)
-            except Exception:
-                # Fallback 2: Regex extraction for specific formats (e.g. "235P/LINEAR" -> "235P")
-                match = re.search(r"^(\d+[PDCX]|P/\d{4} [A-Z0-9]+|C/\d{4} [A-Z0-9]+|\d+)", obj_name)
-                if match:
-                    short_id = match.group(1)
-                    try:
-                        obj = Horizons(id=short_id, location=location_code, epochs=obs_time.jd, id_type='smallbody')
-                        result = obj.ephemerides(closest_apparition=True)
-                    except Exception:
-                        try:
-                            obj = Horizons(id=short_id, location=location_code, epochs=obs_time.jd, id_type='designation')
-                            result = obj.ephemerides(closest_apparition=True)
-                        except Exception:
-                            obj = Horizons(id=short_id, location=location_code, epochs=obs_time.jd)
-                            result = obj.ephemerides(closest_apparition=True)
-                else:
-                    raise
-
-        ra = result['RA'][0] * u.deg
+        result = _horizons_query(obj_name, location_code, obs_time.jd)
+        ra  = result['RA'][0]  * u.deg
         dec = result['DEC'][0] * u.deg
-        sky_coord = SkyCoord(ra=ra, dec=dec, frame='icrs')
-        
-        return obj_name, sky_coord
+        return obj_name, SkyCoord(ra=ra, dec=dec, frame='icrs')
     except Exception as e:
         raise RuntimeError(f"JPL Horizons lookup failed for {obj_name}: {e}")
 
@@ -82,31 +94,7 @@ def get_horizons_ephemerides(obj_name, start_time, duration_minutes=240, step_mi
         }
 
         # Query Horizons with epochs dict
-        try:
-            obj = Horizons(id=obj_name, location=location_code, epochs=epochs, id_type='smallbody')
-            result = obj.ephemerides(closest_apparition=True)
-        except Exception:
-            try:
-                # Fallback 1: Search
-                obj = Horizons(id=obj_name, location=location_code, epochs=epochs)
-                result = obj.ephemerides(closest_apparition=True)
-            except Exception:
-                # Fallback 2: Regex
-                match = re.search(r"^(\d+[PDCX]|P/\d{4} [A-Z0-9]+|C/\d{4} [A-Z0-9]+|\d+)", obj_name)
-                if match:
-                    short_id = match.group(1)
-                    try:
-                        obj = Horizons(id=short_id, location=location_code, epochs=epochs, id_type='smallbody')
-                        result = obj.ephemerides(closest_apparition=True)
-                    except Exception:
-                        try:
-                            obj = Horizons(id=short_id, location=location_code, epochs=epochs, id_type='designation')
-                            result = obj.ephemerides(closest_apparition=True)
-                        except Exception:
-                            obj = Horizons(id=short_id, location=location_code, epochs=epochs)
-                            result = obj.ephemerides(closest_apparition=True)
-                else:
-                    raise
+        result = _horizons_query(obj_name, location_code, epochs)
 
         # Convert result table to list of SkyCoords
         coords = [SkyCoord(ra=row['RA']*u.deg, dec=row['DEC']*u.deg, frame='icrs') for row in result]
