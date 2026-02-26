@@ -31,6 +31,10 @@ temp/
 
 # Claude Code local state (not needed in repo)
 .claude/
+CLAUDE.md
+
+# Internal planning / design docs (not for public repo)
+docs/plans/
 
 # Playwright MCP browser session files
 .playwright-mcp/
