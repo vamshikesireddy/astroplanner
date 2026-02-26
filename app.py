@@ -813,17 +813,20 @@ def _render_night_plan_builder(
             with _row_a[_col_idx]:
                 _vmag_numeric = pd.to_numeric(df_obs[vmag_col], errors='coerce').dropna()
                 if not _vmag_numeric.empty:
-                    _vmag_lo = float(_vmag_numeric.min())
-                    _vmag_hi = float(_vmag_numeric.max())
-                    _vmag_range = st.slider(
-                        f"Magnitude ({vmag_col})",
-                        min_value=round(_vmag_lo, 1),
-                        max_value=round(_vmag_hi, 1),
-                        value=(round(_vmag_lo, 1), round(_vmag_hi, 1)),
-                        step=0.1,
-                        key=f"{section_key}_vmag",
-                        help="Lower magnitude = brighter.",
-                    )
+                    _vmag_lo = round(float(_vmag_numeric.min()), 1)
+                    _vmag_hi = round(float(_vmag_numeric.max()), 1)
+                    if _vmag_lo < _vmag_hi:
+                        _vmag_range = st.slider(
+                            f"Magnitude ({vmag_col})",
+                            min_value=_vmag_lo,
+                            max_value=_vmag_hi,
+                            value=(_vmag_lo, _vmag_hi),
+                            step=0.1,
+                            key=f"{section_key}_vmag",
+                            help="Lower magnitude = brighter.",
+                        )
+                    else:
+                        st.caption(f"Mag {_vmag_lo} (all targets same — filter unavailable)")
             _col_idx += 1
         if _has_type:
             with _row_a[_col_idx]:
