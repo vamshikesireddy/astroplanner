@@ -635,6 +635,115 @@ def generate_plan_pdf(df_plan, night_start, night_end,
     return buf.getvalue()
 
 
+def _apply_night_plan_filters(
+    df,
+    pri_col, sel_pri,
+    vmag_col, vmag_range,
+    type_col, sel_types,
+    disc_col, disc_days,
+    local_tz, start_time, win_start_h, win_end_h,
+    sel_moon, all_moon_statuses,
+):
+    """Apply all night plan filters to df and return the filtered copy.
+
+    Filter order: priority → magnitude → type → discovery → window → moon status.
+
+    Parameters
+    ----------
+    df : DataFrame
+        Source observable targets (will be copied internally).
+    pri_col, sel_pri : str | None, list | None
+        Priority column name and selected priority levels.
+        Pass ``None`` for either to skip the priority filter.
+    vmag_col, vmag_range : str | None, tuple | None
+        Magnitude column name and (lo, hi) range tuple.
+        Pass ``None`` for either to skip the magnitude filter.
+    type_col, sel_types : str | None, list | None
+        Type column name and selected type values.
+        Pass ``None`` for either to skip the type filter.
+    disc_col, disc_days : str | None, int | None
+        Discovery-date column name and recency threshold in days.
+        Pass ``None`` for either (or ``disc_days=365``) to skip.
+    local_tz : tzinfo
+        Local timezone used to localise the observation window datetimes.
+    start_time : datetime
+        Tonight's start time (date component used to build window start).
+    win_start_h, win_end_h : int
+        Hour (24-h) for window start (tonight) and end (next morning).
+    sel_moon, all_moon_statuses : list | None, list
+        Selected Moon Status labels and the full list of statuses.
+        Filtering is skipped when ``sel_moon`` is ``None`` or equals
+        ``all_moon_statuses``.
+    """
+    out = df.copy()
+
+    # Filter: priority
+    if pri_col and pri_col in out.columns and sel_pri:
+        def _matches_pri(val):
+            v = str(val).upper().strip()
+            for p in sel_pri:
+                if p == "(unassigned)" and v in ('', 'NAN', 'NONE', 'N/A'):
+                    return True
+                elif p != "(unassigned)" and p in v:
+                    return True
+            return False
+        out = out[out[pri_col].apply(_matches_pri)]
+
+    # Filter: magnitude
+    if vmag_col and vmag_col in out.columns and vmag_range is not None:
+        _mag_num = pd.to_numeric(out[vmag_col], errors='coerce')
+        out = out[
+            _mag_num.isna() |
+            _mag_num.between(vmag_range[0], vmag_range[1], inclusive='both')
+        ]
+
+    # Filter: type/class
+    if type_col and type_col in out.columns and sel_types is not None:
+        out = out[out[type_col].astype(str).isin(sel_types)]
+
+    # Filter: discovery recency
+    if (disc_col and disc_col in out.columns
+            and disc_days is not None and disc_days < 365):
+        _disc_parsed = pd.to_datetime(out[disc_col], errors='coerce', utc=True)
+        _disc_cutoff = pd.Timestamp(
+            datetime.now(tz=pytz.utc) - timedelta(days=disc_days)
+        )
+        out = out[_disc_parsed.isna() | (_disc_parsed >= _disc_cutoff)]
+
+    # Filter: observation window — start is tonight, end is always next morning
+    _win_start_dt = local_tz.localize(
+        datetime(start_time.year, start_time.month, start_time.day, win_start_h, 0)
+    )
+    _win_end_dt = local_tz.localize(
+        datetime(start_time.year, start_time.month, start_time.day, win_end_h, 0)
+        + timedelta(days=1)
+    )
+
+    def _in_obs_window(row):
+        status = str(row.get('Status', ''))
+        if 'Always Up' in status:
+            return True
+        r = row.get('_rise_datetime')
+        s = row.get('_set_datetime')
+        if pd.isnull(r) or pd.isnull(s):
+            return True  # keep if timing unknown
+        try:
+            # Visible during window if rises before window ends AND sets after window starts
+            return r < _win_end_dt and s > _win_start_dt
+        except (TypeError, ValueError):
+            return True
+
+    if '_rise_datetime' in out.columns and '_set_datetime' in out.columns:
+        out = out[out.apply(_in_obs_window, axis=1)]
+
+    # Filter: Moon Status
+    if (sel_moon is not None and 'Moon Status' in out.columns
+            and len(sel_moon) < len(all_moon_statuses)):
+        out = out[out['Moon Status'].isin(sel_moon)]
+
+    return out
+
+
 def _render_night_plan_builder(
     df_obs, start_time, night_end, local_tz,
     target_col="Name", ra_col="RA", dec_col="Dec",
@@ -819,80 +928,16 @@ def _render_night_plan_builder(
         if df_obs.empty:
             st.warning("No observable targets to plan.")
         else:
-            _plan_src = df_obs.copy()
-
-            # Filter: priority
-            if pri_col and pri_col in _plan_src.columns and _sel_pri:
-                def _matches_pri(val):
-                    v = str(val).upper().strip()
-                    for p in _sel_pri:
-                        if p == "(unassigned)" and v in ('', 'NAN', 'NONE', 'N/A'):
-                            return True
-                        elif p != "(unassigned)" and p in v:
-                            return True
-                    return False
-                _plan_src = _plan_src[_plan_src[pri_col].apply(_matches_pri)]
-
-            # Filter: magnitude
-            if vmag_col and vmag_col in _plan_src.columns and _vmag_range is not None:
-                _mag_num = pd.to_numeric(_plan_src[vmag_col], errors='coerce')
-                _plan_src = _plan_src[
-                    _mag_num.isna() |
-                    _mag_num.between(_vmag_range[0], _vmag_range[1], inclusive='both')
-                ]
-
-            # Filter: type/class
-            if type_col and type_col in _plan_src.columns and _sel_types is not None:
-                _plan_src = _plan_src[
-                    _plan_src[type_col].astype(str).isin(_sel_types)
-                ]
-
-            # Filter: discovery recency
-            if (disc_col and disc_col in _plan_src.columns
-                    and _disc_days is not None and _disc_days < 365):
-                _disc_parsed = pd.to_datetime(
-                    _plan_src[disc_col], errors='coerce', utc=True
-                )
-                _disc_cutoff = pd.Timestamp(
-                    datetime.now(tz=pytz.utc) - timedelta(days=_disc_days)
-                )
-                _plan_src = _plan_src[
-                    _disc_parsed.isna() | (_disc_parsed >= _disc_cutoff)
-                ]
-
-            # Filter: observation window — start is tonight, end is always next morning
-            if True:
-                _win_start_dt = local_tz.localize(
-                    datetime(start_time.year, start_time.month, start_time.day, _win_start_h, 0)
-                )
-                _win_end_dt = local_tz.localize(
-                    datetime(start_time.year, start_time.month, start_time.day, _win_end_h, 0)
-                    + timedelta(days=1)
-                )
-
-                def _in_obs_window(row):
-                    status = str(row.get('Status', ''))
-                    if 'Always Up' in status:
-                        return True
-                    r = row.get('_rise_datetime')
-                    s = row.get('_set_datetime')
-                    if pd.isnull(r) or pd.isnull(s):
-                        return True  # keep if timing unknown
-                    try:
-                        # Visible during window if rises before window ends AND sets after window starts
-                        return r < _win_end_dt and s > _win_start_dt
-                    except (TypeError, ValueError):
-                        return True
-
-                if '_rise_datetime' in _plan_src.columns and '_set_datetime' in _plan_src.columns:
-                    _plan_src = _plan_src[_plan_src.apply(_in_obs_window, axis=1)]
-
-            # Filter: Moon Status
-            if (_sel_moon is not None and 'Moon Status' in _plan_src.columns
-                    and len(_sel_moon) < len(_all_moon_statuses)):
-                _plan_src = _plan_src[
-                    _plan_src['Moon Status'].isin(_sel_moon)
-                ]
+            _plan_src = _apply_night_plan_filters(
+                df=df_obs,
+                pri_col=pri_col,        sel_pri=_sel_pri,
+                vmag_col=vmag_col,      vmag_range=_vmag_range,
+                type_col=type_col,      sel_types=_sel_types,
+                disc_col=disc_col,      disc_days=_disc_days,
+                local_tz=local_tz,      start_time=start_time,
+                win_start_h=_win_start_h, win_end_h=_win_end_h,
+                sel_moon=_sel_moon,     all_moon_statuses=_all_moon_statuses,
+            )
 
             if _plan_src.empty:
                 st.warning("No observable targets match the selected filters.")
