@@ -972,6 +972,7 @@ def _get_comet_jpl_id(name):
     return name.split('(')[0].strip()
 
 
+@st.cache_data(ttl=3600, show_spinner=False)
 def load_comets_config():
     if os.path.exists(COMETS_FILE):
         with open(COMETS_FILE, "r") as f:
@@ -985,6 +986,7 @@ def load_comets_config():
     return data
 
 
+@st.cache_data(ttl=3600, show_spinner=False)
 def load_comet_catalog():
     """Loads the MPC comet catalog snapshot for Explore Catalog mode.
     Returns (updated_str, entries_list) or (None, []) if not downloaded yet."""
@@ -999,6 +1001,7 @@ def load_comet_catalog():
 
 
 def save_comets_config(config):
+    load_comets_config.clear()          # invalidate cache after write
     with open(COMETS_FILE, "w") as f:
         yaml.dump(config, f, default_flow_style=False)
     token = st.secrets.get("GITHUB_TOKEN")
@@ -1096,6 +1099,7 @@ def _asteroid_jpl_id(name):
     return name
 
 
+@st.cache_data(ttl=3600, show_spinner=False)
 def load_asteroids_config():
     if os.path.exists(ASTEROIDS_FILE):
         with open(ASTEROIDS_FILE, "r") as f:
@@ -1110,6 +1114,7 @@ def load_asteroids_config():
 
 
 def save_asteroids_config(config):
+    load_asteroids_config.clear()       # invalidate cache after write
     with open(ASTEROIDS_FILE, "w") as f:
         yaml.dump(config, f, default_flow_style=False)
     token = st.secrets.get("GITHUB_TOKEN")
@@ -1178,6 +1183,7 @@ def get_unistellar_scraped_asteroids():
 DSO_FILE = "dso_targets.yaml"
 
 
+@st.cache_data(ttl=3600, show_spinner=False)
 def load_dso_config():
     """Load curated DSO catalog (Messier, Bright Stars, Astrophotography Favorites) from YAML."""
     if os.path.exists(DSO_FILE):
