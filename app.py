@@ -1,5 +1,6 @@
 import streamlit as st
 import warnings
+import sys
 import yaml
 import json
 import os
@@ -1000,7 +1001,7 @@ def save_comets_config(config):
                 repo.create_file(COMETS_FILE, "Create comets.yaml (Admin)", yaml_str)
                 st.toast("✅ comets.yaml created on GitHub")
         except Exception as e:
-            st.error(f"GitHub Sync Error: {e}")
+            st.error(f"GitHub Sync Error: {e}")  # admin panel — full error OK
 
 
 @st.cache_data(ttl=3600, show_spinner="Calculating comet visibility...")
@@ -1111,7 +1112,7 @@ def save_asteroids_config(config):
                 repo.create_file(ASTEROIDS_FILE, "Create asteroids.yaml (Admin)", yaml_str)
                 st.toast("✅ asteroids.yaml created on GitHub")
         except Exception as e:
-            st.error(f"GitHub Sync Error: {e}")
+            st.error(f"GitHub Sync Error: {e}")  # admin panel — full error OK
 
 
 @st.cache_data(ttl=3600, show_spinner="Calculating asteroid visibility...")
@@ -1758,7 +1759,8 @@ if target_mode == "Star/Galaxy/Nebula (SIMBAD)":
                 st.success(f"✅ Resolved: **{name}** (RA: {sky_coord.ra.to_string(unit=u.hour, sep=':', precision=1)}, Dec: {sky_coord.dec.to_string(sep=':', precision=1)})")
                 resolved = True
             except Exception as e:
-                st.error(f"Could not resolve object: {e}")
+                print(f"[ERROR] SIMBAD resolve failed for '{obj_name_custom}': {e}", file=sys.stderr)
+                st.error("Could not resolve object name. Check spelling and try again.")
     elif traj_dso_list:
         sel_idx = target_options.index(selected_dso)
         if sel_idx < len(traj_dso_list):
@@ -1897,7 +1899,8 @@ elif target_mode == "Planet (JPL Horizons)":
             st.success(f"✅ Resolved: **{name}**")
             resolved = True
         except Exception as e:
-            st.error(f"Could not resolve object: {e}")
+            print(f"[ERROR] JPL planet resolve failed for '{obj_name}': {e}", file=sys.stderr)
+            st.error("Could not fetch position data from JPL. Please try again.")
 
 elif target_mode == "Comet (JPL Horizons)":
     _comet_view = st.radio(
@@ -2006,7 +2009,8 @@ elif target_mode == "Comet (JPL Horizons)":
                             )
                             st.success(f"✅ '{req_comet}' verified and request submitted for admin review.")
                         except Exception as e:
-                            st.error(f"❌ JPL could not resolve '{jpl_id}': {e}")
+                            print(f"[ERROR] JPL could not resolve comet '{jpl_id}': {e}", file=sys.stderr)
+                            st.error("Could not fetch position data from JPL. Please try again.")
 
         # Display active Unistellar priority targets
         if priority_set:
@@ -2342,7 +2346,8 @@ elif target_mode == "Comet (JPL Horizons)":
                 st.success(f"✅ Resolved: **{name}**")
                 resolved = True
             except Exception as e:
-                st.error(f"Could not resolve object: {e}")
+                print(f"[ERROR] JPL Horizons comet resolve failed for '{obj_name}': {e}", file=sys.stderr)
+                st.error("Could not fetch position data from JPL. Please try again.")
 
 
     elif _comet_view == "\U0001f52d Explore Catalog":
@@ -2647,7 +2652,8 @@ elif target_mode == "Asteroid (JPL Horizons)":
                         )
                         st.success(f"✅ '{req_asteroid}' verified and request submitted for admin review.")
                     except Exception as e:
-                        st.error(f"❌ JPL could not resolve '{jpl_id}': {e}")
+                        print(f"[ERROR] JPL could not resolve asteroid '{jpl_id}': {e}", file=sys.stderr)
+                        st.error("Could not fetch position data from JPL. Please try again.")
 
     # Priority asteroids expander
     if priority_set:
@@ -2978,7 +2984,8 @@ elif target_mode == "Asteroid (JPL Horizons)":
             st.success(f"✅ Resolved: **{name}**")
             resolved = True
         except Exception as e:
-            st.error(f"Could not resolve object: {e}")
+            print(f"[ERROR] JPL Horizons asteroid resolve failed for '{obj_name}': {e}", file=sys.stderr)
+            st.error("Could not fetch position data from JPL. Please try again.")
 
 elif target_mode == "Cosmic Cataclysm":
     status_msg = st.empty()
@@ -3017,7 +3024,7 @@ elif target_mode == "Cosmic Cataclysm":
                     repo.create_file(TARGETS_FILE, "Create targets.yaml (Admin)", yaml_str)
                     st.toast("✅ targets.yaml created on GitHub")
             except Exception as e:
-                st.error(f"GitHub Sync Error: {e}")
+                st.error(f"GitHub Sync Error: {e}")  # admin panel — full error OK
 
     def send_notification(title, body):
         """Creates a GitHub Issue to notify admin of new requests."""
@@ -3570,7 +3577,8 @@ elif target_mode == "Cosmic Cataclysm":
                         resolved = True
                         st.success(f"✅ Resolved: **{name}**")
                     except Exception as e:
-                        st.error(f"Error parsing coordinates: {e}")
+                        print(f"[ERROR] Coordinate parse failed for '{name}' (RA={ra_val}, Dec={dec_val}): {e}", file=sys.stderr)
+                        st.error("Calculation failed for this object. Try a different target.")
         else:
             st.error(f"Could not find 'Name' column. Found: {cols}")
             st.dataframe(df_alerts, width="stretch")
@@ -3592,7 +3600,8 @@ elif target_mode == "Manual RA/Dec":
             st.success(f"✅ Coordinates parsed successfully.")
             resolved = True
         except Exception as e:
-            st.error(f"Invalid coordinates format: {e}")
+            print(f"[ERROR] Invalid manual RA/Dec coordinates (RA='{ra_input}', Dec='{dec_input}'): {e}", file=sys.stderr)
+            st.error("Invalid coordinates format. Please use formats like '15h59m30s' for RA and '25d55m13s' for Dec.")
 
 # ---------------------------
 # MAIN: Calculation & Output
@@ -3613,13 +3622,15 @@ if st.button("🚀 Calculate Visibility", type="primary", disabled=not resolved)
             try:
                 ephem_coords = get_horizons_ephemerides(obj_name, start_time, duration_minutes=duration, step_minutes=10)
             except Exception as e:
-                st.warning(f"Could not fetch detailed ephemerides ({e}). Using fixed coordinates.")
+                print(f"[ERROR] Could not fetch detailed ephemerides for '{obj_name}': {e}", file=sys.stderr)
+                st.warning("Could not fetch position data from JPL. Please try again. Using fixed coordinates.")
     elif target_mode == "Planet (JPL Horizons)":
         with st.spinner("Fetching planetary ephemerides from JPL..."):
             try:
                 ephem_coords = get_planet_ephemerides(obj_name, start_time, duration_minutes=duration, step_minutes=10)
             except Exception as e:
-                st.warning(f"Could not fetch planetary ephemerides ({e}). Using fixed coordinates.")
+                print(f"[ERROR] Could not fetch planetary ephemerides for '{obj_name}': {e}", file=sys.stderr)
+                st.warning("Could not fetch position data from JPL. Please try again. Using fixed coordinates.")
 
     with st.spinner("Calculating trajectory..."):
         results = compute_trajectory(sky_coord, location, start_time, duration_minutes=duration, ephemeris_coords=ephem_coords)
