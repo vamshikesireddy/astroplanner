@@ -991,30 +991,16 @@ def _get_comet_jpl_id(name):
 
 @st.cache_data(ttl=3600, show_spinner=False)
 def load_comets_config():
-    if os.path.exists(COMETS_FILE):
-        with open(COMETS_FILE, "r") as f:
-            data = yaml.safe_load(f) or {}
-    else:
-        data = {}
-    data.setdefault("comets", [])
-    data.setdefault("unistellar_priority", [])
-    data.setdefault("priorities", {})
-    data.setdefault("cancelled", [])
-    return data
+    from backend.config import read_comets_config
+    return read_comets_config(COMETS_FILE)
 
 
 @st.cache_data(ttl=3600, show_spinner=False)
 def load_comet_catalog():
     """Loads the MPC comet catalog snapshot for Explore Catalog mode.
     Returns (updated_str, entries_list) or (None, []) if not downloaded yet."""
-    if not os.path.exists(COMET_CATALOG_FILE):
-        return None, []
-    try:
-        with open(COMET_CATALOG_FILE, "r", encoding="utf-8") as f:
-            data = json.load(f)
-        return data.get("updated"), data.get("comets", [])
-    except Exception:
-        return None, []
+    from backend.config import read_comet_catalog
+    return read_comet_catalog(COMET_CATALOG_FILE)
 
 
 def save_comets_config(config):
@@ -1120,16 +1106,8 @@ def _asteroid_jpl_id(name):
 
 @st.cache_data(ttl=3600, show_spinner=False)
 def load_asteroids_config():
-    if os.path.exists(ASTEROIDS_FILE):
-        with open(ASTEROIDS_FILE, "r") as f:
-            data = yaml.safe_load(f) or {}
-    else:
-        data = {}
-    data.setdefault("asteroids", [])
-    data.setdefault("unistellar_priority", [])
-    data.setdefault("priorities", {})
-    data.setdefault("cancelled", [])
-    return data
+    from backend.config import read_asteroids_config
+    return read_asteroids_config(ASTEROIDS_FILE)
 
 
 def save_asteroids_config(config):
@@ -1207,15 +1185,8 @@ DSO_FILE = "dso_targets.yaml"
 @st.cache_data(ttl=3600, show_spinner=False)
 def load_dso_config():
     """Load curated DSO catalog (Messier, Bright Stars, Astrophotography Favorites) from YAML."""
-    if os.path.exists(DSO_FILE):
-        with open(DSO_FILE, "r") as f:
-            data = yaml.safe_load(f) or {}
-    else:
-        data = {}
-    data.setdefault("messier", [])
-    data.setdefault("bright_stars", [])
-    data.setdefault("astrophotography_favorites", [])
-    return data
+    from backend.config import read_dso_config
+    return read_dso_config(DSO_FILE)
 
 
 @st.cache_data(ttl=3600, show_spinner="Calculating DSO visibility...")
