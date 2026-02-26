@@ -93,6 +93,47 @@ def az_in_selected(az_deg: float, selected_dirs: set) -> bool:
                 return True
     return False
 
+
+def _check_row_observability(sc, row_status, location, check_times, moon_loc, moon_locs_chk,
+                              moon_illum, min_alt, max_alt, az_dirs, min_moon_sep):
+    """Compute observability for a single target row.
+
+    Args:
+        sc:            SkyCoord of the target.
+        row_status:    Value of the 'Status' column (string, e.g. "Never Rises").
+        location:      EarthLocation of the observer.
+        check_times:   List of 3 datetime objects (start, mid, end of window).
+        moon_loc:      Moon coordinate at start time (or None if unavailable).
+        moon_locs_chk: List of moon coordinates at each check_time (or []).
+        moon_illum:    Moon illumination 0-100 float.
+        min_alt:       Minimum altitude filter (degrees).
+        max_alt:       Maximum altitude filter (degrees).
+        az_dirs:       Set of selected compass octant labels (empty = no filter).
+        min_moon_sep:  Minimum moon separation filter (degrees).
+
+    Returns:
+        (obs: bool, reason: str, moon_sep_str: str, moon_status_str: str)
+    """
+    _seps = [moon_sep_deg(sc, ml) for ml in moon_locs_chk] if moon_locs_chk else []
+    _min_sep = min(_seps) if _seps else (moon_sep_deg(sc, moon_loc) if moon_loc else 0.0)
+    _max_sep = max(_seps) if _seps else _min_sep
+    moon_sep_str    = f"{_min_sep:.1f}°–{_max_sep:.1f}°" if moon_loc else "–"
+    moon_status_str = get_moon_status(moon_illum, _min_sep) if moon_loc else ""
+
+    if str(row_status) == "Never Rises":
+        return False, "Never Rises", moon_sep_str, moon_status_str
+
+    obs, reason = False, "Not visible during window"
+    for i_t, t_chk in enumerate(check_times):
+        aa = sc.transform_to(AltAz(obstime=Time(t_chk), location=location))
+        if min_alt <= aa.alt.degree <= max_alt and (not az_dirs or az_in_selected(aa.az.degree, az_dirs)):
+            sep_ok = (not moon_locs_chk) or (moon_sep_deg(sc, moon_locs_chk[i_t]) >= min_moon_sep)
+            if sep_ok:
+                obs, reason = True, ""
+                break
+    return obs, reason, moon_sep_str, moon_status_str
+
+
 st.set_page_config(page_title="AstroPlanner", page_icon="🔭", layout="wide", initial_sidebar_state="expanded")
 
 def get_moon_status(illumination, separation):
@@ -1674,30 +1715,20 @@ if target_mode == "Star/Galaxy/Nebula (SIMBAD)":
                         start_time + timedelta(minutes=duration / 2),
                         start_time + timedelta(minutes=duration)
                     ]
-                    moon_locs_chk = []
+                    _mlocs = []
                     if moon_loc:
                         try:
-                            moon_locs_chk = [get_moon(Time(t), location_d) for t in check_times]
+                            _mlocs = [get_moon(Time(t), location_d) for t in check_times]
                         except Exception:
-                            moon_locs_chk = [moon_loc] * 3
-                    _seps = [moon_sep_deg(sc, ml) for ml in moon_locs_chk] if moon_locs_chk else []
-                    _min_sep = min(_seps) if _seps else (moon_sep_deg(sc, moon_loc) if moon_loc else 0.0)
-                    _max_sep = max(_seps) if _seps else _min_sep
-                    moon_sep_list.append(f"{_min_sep:.1f}°–{_max_sep:.1f}°" if moon_loc else "–")
-                    moon_status_list.append(get_moon_status(moon_illum, _min_sep) if moon_loc else "")
-                    obs, reason = False, "Not visible during window"
-                    if str(row.get('Status', '')) == "Never Rises":
-                        reason = "Never Rises"
-                    else:
-                        for i_t, t_chk in enumerate(check_times):
-                            aa = sc.transform_to(AltAz(obstime=Time(t_chk), location=location_d))
-                            if min_alt <= aa.alt.degree <= max_alt and (not az_dirs or az_in_selected(aa.az.degree, az_dirs)):
-                                sep_ok = (not moon_locs_chk) or (moon_sep_deg(sc, moon_locs_chk[i_t]) >= min_moon_sep)
-                                if sep_ok:
-                                    obs, reason = True, ""
-                                    break
+                            _mlocs = [moon_loc] * 3
+                    obs, reason, ms, mst = _check_row_observability(
+                        sc, row.get('Status', ''), location_d, check_times,
+                        moon_loc, _mlocs, moon_illum, min_alt, max_alt, az_dirs, min_moon_sep
+                    )
                     is_obs_list.append(obs)
                     reason_list.append(reason)
+                    moon_sep_list.append(ms)
+                    moon_status_list.append(mst)
                 except Exception:
                     is_obs_list.append(False)
                     reason_list.append("Parse Error")
@@ -1860,32 +1891,22 @@ elif target_mode == "Planet (JPL Horizons)":
                 try:
                     sc = SkyCoord(row['RA'], row['Dec'], frame='icrs')
                     check_times = [start_time, start_time + timedelta(minutes=duration/2), start_time + timedelta(minutes=duration)]
-                    moon_locs = []
+                    _mlocs = []
                     if moon_loc:
                         try:
-                            moon_locs = [get_moon(Time(t), location) for t in check_times]
+                            _mlocs = [get_moon(Time(t), location) for t in check_times]
                         except Exception:
-                            moon_locs = [moon_loc] * 3
-                    _seps = [moon_sep_deg(sc, ml) for ml in moon_locs] if moon_locs else []
-                    _min_sep = min(_seps) if _seps else (moon_sep_deg(sc, moon_loc) if moon_loc else 0.0)
-                    _max_sep = max(_seps) if _seps else _min_sep
-                    moon_sep_list.append(f"{_min_sep:.1f}°–{_max_sep:.1f}°" if moon_loc else "–")
-                    moon_status_list.append(get_moon_status(moon_illum, _min_sep) if moon_loc else "")
-                    obs, reason = False, "Not visible during window"
-                    if str(row.get('Status', '')) == "Never Rises":
-                        reason = "Never Rises"
-                    else:
-                        for i, t_check in enumerate(check_times):
-                            aa = sc.transform_to(AltAz(obstime=Time(t_check), location=location))
-                            if min_alt <= aa.alt.degree <= max_alt and (not az_dirs or az_in_selected(aa.az.degree, az_dirs)):
-                                sep_ok = (not moon_locs) or (moon_sep_deg(sc, moon_locs[i]) >= min_moon_sep)
-                                if sep_ok:
-                                    obs, reason = True, ""
-                                    break
+                            _mlocs = [moon_loc] * 3
+                    obs, reason, ms, mst = _check_row_observability(
+                        sc, row.get('Status', ''), location, check_times,
+                        moon_loc, _mlocs, moon_illum, min_alt, max_alt, az_dirs, min_moon_sep
+                    )
                     is_obs_list.append(obs)
                     reason_list.append(reason)
+                    moon_sep_list.append(ms)
+                    moon_status_list.append(mst)
                 except Exception:
-                    is_obs_list.append(True)   # keep on error (same as before)
+                    is_obs_list.append(True)   # keep on error (planets stay visible by default)
                     reason_list.append("")
                     moon_sep_list.append("–")
                     moon_status_list.append("")
@@ -2273,30 +2294,20 @@ elif target_mode == "Comet (JPL Horizons)":
                             start_time + timedelta(minutes=duration / 2),
                             start_time + timedelta(minutes=duration)
                         ]
-                        moon_locs_chk = []
+                        _mlocs = []
                         if moon_loc:
                             try:
-                                moon_locs_chk = [get_moon(Time(t), location_c) for t in check_times]
+                                _mlocs = [get_moon(Time(t), location_c) for t in check_times]
                             except Exception:
-                                moon_locs_chk = [moon_loc] * 3
-                        _seps = [moon_sep_deg(sc, ml) for ml in moon_locs_chk] if moon_locs_chk else []
-                        _min_sep = min(_seps) if _seps else (moon_sep_deg(sc, moon_loc) if moon_loc else 0.0)
-                        _max_sep = max(_seps) if _seps else _min_sep
-                        moon_sep_list.append(f"{_min_sep:.1f}°–{_max_sep:.1f}°" if moon_loc else "–")
-                        moon_status_list.append(get_moon_status(moon_illum, _min_sep) if moon_loc else "")
-                        obs, reason = False, "Not in window (Alt/Az/Moon)"
-                        if str(row.get('Status', '')) == "Never Rises":
-                            reason = "Never Rises"
-                        else:
-                            for i, t_chk in enumerate(check_times):
-                                aa = sc.transform_to(AltAz(obstime=Time(t_chk), location=location_c))
-                                if min_alt <= aa.alt.degree <= max_alt and (not az_dirs or az_in_selected(aa.az.degree, az_dirs)):
-                                    sep_ok = (not moon_locs_chk) or (moon_sep_deg(sc, moon_locs_chk[i]) >= min_moon_sep)
-                                    if sep_ok:
-                                        obs, reason = True, ""
-                                        break
+                                _mlocs = [moon_loc] * 3
+                        obs, reason, ms, mst = _check_row_observability(
+                            sc, row.get('Status', ''), location_c, check_times,
+                            moon_loc, _mlocs, moon_illum, min_alt, max_alt, az_dirs, min_moon_sep
+                        )
                         is_obs_list.append(obs)
                         reason_list.append(reason)
+                        moon_sep_list.append(ms)
+                        moon_status_list.append(mst)
                     except Exception:
                         is_obs_list.append(False)
                         reason_list.append("Parse Error")
@@ -2911,30 +2922,20 @@ elif target_mode == "Asteroid (JPL Horizons)":
                         start_time + timedelta(minutes=duration / 2),
                         start_time + timedelta(minutes=duration)
                     ]
-                    moon_locs_chk = []
+                    _mlocs = []
                     if moon_loc:
                         try:
-                            moon_locs_chk = [get_moon(Time(t), location_a) for t in check_times]
+                            _mlocs = [get_moon(Time(t), location_a) for t in check_times]
                         except Exception:
-                            moon_locs_chk = [moon_loc] * 3
-                    _seps = [moon_sep_deg(sc, ml) for ml in moon_locs_chk] if moon_locs_chk else []
-                    _min_sep = min(_seps) if _seps else (moon_sep_deg(sc, moon_loc) if moon_loc else 0.0)
-                    _max_sep = max(_seps) if _seps else _min_sep
-                    moon_sep_list.append(f"{_min_sep:.1f}°–{_max_sep:.1f}°" if moon_loc else "–")
-                    moon_status_list.append(get_moon_status(moon_illum, _min_sep) if moon_loc else "")
-                    obs, reason = False, "Not visible during window"
-                    if str(row.get('Status', '')) == "Never Rises":
-                        reason = "Never Rises"
-                    else:
-                        for i_t, t_chk in enumerate(check_times):
-                            aa = sc.transform_to(AltAz(obstime=Time(t_chk), location=location_a))
-                            if min_alt <= aa.alt.degree <= max_alt and (not az_dirs or az_in_selected(aa.az.degree, az_dirs)):
-                                sep_ok = (not moon_locs_chk) or (moon_sep_deg(sc, moon_locs_chk[i_t]) >= min_moon_sep)
-                                if sep_ok:
-                                    obs, reason = True, ""
-                                    break
+                            _mlocs = [moon_loc] * 3
+                    obs, reason, ms, mst = _check_row_observability(
+                        sc, row.get('Status', ''), location_a, check_times,
+                        moon_loc, _mlocs, moon_illum, min_alt, max_alt, az_dirs, min_moon_sep
+                    )
                     is_obs_list.append(obs)
                     reason_list.append(reason)
+                    moon_sep_list.append(ms)
+                    moon_status_list.append(mst)
                 except Exception:
                     is_obs_list.append(False)
                     reason_list.append("Parse Error")
