@@ -29,14 +29,16 @@ def test_quality_high():
 def test_quality_med():
     # Complete(30) + alt30(20) + moon40(15) + dur2h(10) = 75 -- HIGH
     # Partial(15) + alt30(20) + moon40(15) + dur2h(10) = 60 -- MED
-    _, q = app._exoplanet_score("Partial", 30.0, 40.0, 2.0)
-    assert q in ("MED", "HIGH")
+    score, q = app._exoplanet_score("Partial", 30.0, 40.0, 2.0)
+    assert score == 60
+    assert q == "MED"
 
 
 def test_quality_low():
     # Partial(15) + alt20(10) + moon35(15) + dur1h(5) = 45 -- LOW
-    _, q = app._exoplanet_score("Partial", 22.0, 35.0, 1.0)
-    assert q in ("LOW", "MED")
+    score, q = app._exoplanet_score("Partial", 22.0, 35.0, 1.0)
+    assert score == 45
+    assert q == "LOW"
 
 
 def test_quality_skip():

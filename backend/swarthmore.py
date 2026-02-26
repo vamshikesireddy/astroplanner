@@ -134,7 +134,9 @@ def fetch_transit_windows(lat: float, lon: float, tz_name: str,
     if not planet_names:
         return pd.DataFrame()
 
-    # Swarthmore uses west longitude as positive (360 + west_lon)
+    # Swarthmore (TAPIR) uses 0–360° east-positive convention.
+    # Convert west longitude (negative) to east-positive: lon + 360.
+    # Example: San Francisco -122.4° → 237.6° (360 - 122.4)
     lon_sw = lon if lon >= 0 else 360 + lon
     obs = f"{lat};{lon_sw};{tz_name};My Location"
 

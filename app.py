@@ -41,7 +41,7 @@ except ImportError:
 # Import from local modules
 from backend.resolvers import resolve_simbad, resolve_horizons, get_horizons_ephemerides, resolve_planet, get_planet_ephemerides
 from backend.core import compute_trajectory, calculate_planning_info, azimuth_to_compass, moon_sep_deg, compute_peak_alt_in_window
-from backend.scrape import scrape_unistellar_table, scrape_unistellar_priority_comets, scrape_unistellar_priority_asteroids
+from backend.scrape import scrape_unistellar_table, scrape_unistellar_priority_comets, scrape_unistellar_priority_asteroids, scrape_unistellar_exoplanets
 from backend.github import create_issue as _gh_create_issue
 
 # Suppress Astropy warnings about coordinate frame transformations (Geocentric vs Topocentric)
@@ -80,8 +80,6 @@ def _exoplanet_score(completeness: str, min_alt: float, moon_sep: float,
     Returns:
         (score: int, quality: str)  quality is one of HIGH/MED/LOW/SKIP
     """
-    import math
-
     def _safe(v):
         try:
             f = float(v)
@@ -1502,7 +1500,6 @@ def get_exoplanet_summary(lat, lon, tz_name, start_time):
     Returns empty DataFrame if scrape or Swarthmore fetch fails.
     """
     from backend.swarthmore import fetch_transit_windows
-    from backend.scrape import scrape_unistellar_exoplanets
 
     # 1. Get Unistellar active target list
     planet_names = scrape_unistellar_exoplanets()
@@ -1533,6 +1530,13 @@ def get_exoplanet_summary(lat, lon, tz_name, start_time):
         _illum = float(0.5 * (1 - math.cos(_elong))) * 100
     except Exception:
         _illum = 50.0
+
+    def _fmt(dt, fmt):
+        """Format a datetime object using fmt, returning '–' on failure or NaT."""
+        try:
+            return dt.strftime(fmt) if pd.notna(dt) else "–"
+        except Exception:
+            return "–"
 
     rows = []
     for _, row in df.iterrows():
@@ -1579,12 +1583,6 @@ def get_exoplanet_summary(lat, lon, tz_name, start_time):
                 dur_str = "–"
 
             # Date + time strings from datetime columns
-            def _fmt(dt, fmt):
-                try:
-                    return dt.strftime(fmt) if pd.notna(dt) else "–"
-                except Exception:
-                    return "–"
-
             date_str    = _fmt(ingress_dt, "%b %d")
             ingress_str = _fmt(ingress_dt, "%H:%M")
             mid_str     = _fmt(mid_dt,     "%H:%M")
@@ -4430,11 +4428,16 @@ def render_exoplanet_section(location, start_time, duration, min_alt, max_alt, a
             # Table sorted by score descending
             _df_sorted = df_obs.sort_values("Score", ascending=False)
             _show_cols = [c for c in _DISPLAY_COLS if c in _df_sorted.columns]
+            # Build column config: include shared config + exoplanet-specific Moon Sep column
+            _exo_col_config = {
+                **_MOON_SEP_COL_CONFIG,
+                "Moon Sep During Transit": st.column_config.TextColumn("Moon Sep During Transit"),
+            }
             st.dataframe(
                 _df_sorted[_show_cols],
                 hide_index=True,
                 use_container_width=True,
-                column_config=_MOON_SEP_COL_CONFIG,
+                column_config=_exo_col_config,
             )
             st.caption(
                 "🌙 **Moon Sep During Transit**: angular separation from the Moon at mid-transit "
