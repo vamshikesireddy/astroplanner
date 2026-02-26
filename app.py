@@ -56,14 +56,14 @@ _AZ_OCTANTS = {
 }
 _AZ_LABELS = ["N", "NE", "E", "SE", "S", "SW", "W", "NW"]
 _AZ_CAPTIONS = {
-    "N":  "338–22°",
-    "NE": "23–67°",
-    "E":  "68–112°",
-    "SE": "113–157°",
-    "S":  "158–202°",
-    "SW": "203–247°",
-    "W":  "248–292°",
-    "NW": "293–337°",
+    "N":  "337.5–22.5°",
+    "NE": "22.5–67.5°",
+    "E":  "67.5–112.5°",
+    "SE": "112.5–157.5°",
+    "S":  "157.5–202.5°",
+    "SW": "202.5–247.5°",
+    "W":  "247.5–292.5°",
+    "NW": "292.5–337.5°",
 }
 
 def az_in_selected(az_deg: float, selected_dirs: set) -> bool:
@@ -1243,7 +1243,7 @@ with st.expander("ℹ️ How to Use"):
     *   **Location:** Search for a city, use Browser GPS, or enter coordinates manually.
     *   **Time:** Set your observation start date and time.
     *   **Duration:** Choose how long you plan to image.
-    *   **Observational Filters:** Set Altitude range (Min/Max), Azimuth, and Moon Separation to filter targets.
+    *   **Observational Filters:** Set Altitude range (Min/Max), Azimuth direction (compass grid — select one or more of N/NE/E/SE/S/SW/W/NW), and Moon Separation to filter targets.
 
     ### 2. Choose a Target
     Select one of the six modes:
@@ -1872,7 +1872,8 @@ elif target_mode == "Planet (JPL Horizons)":
                             section_key="planet",
                         )
                 else:
-                    _az_dirs_str = ", ".join(sorted(az_dirs)) if az_dirs else "All"
+                    _az_order = {d: i for i, d in enumerate(_AZ_LABELS)}
+                    _az_dirs_str = ", ".join(sorted(az_dirs, key=lambda d: _az_order[d])) if az_dirs else "All"
                     st.warning(f"No planets meet your criteria (Alt [{min_alt}°, {max_alt}°], Az [{_az_dirs_str}], Moon Sep > {min_moon_sep}°) during the selected window.")
 
             with tab_filt_p:
@@ -3657,7 +3658,8 @@ if st.button("🚀 Calculate Visibility", type="primary", disabled=not resolved)
     ]
     
     if visible_points.empty:
-        _az_dirs_str = ", ".join(sorted(az_dirs)) if az_dirs else "All"
+        _az_order = {d: i for i, d in enumerate(_AZ_LABELS)}
+        _az_dirs_str = ", ".join(sorted(az_dirs, key=lambda d: _az_order[d])) if az_dirs else "All"
         st.warning(f"⚠️ **Visibility Warning:** Target does not meet filters (Alt [{min_alt}°, {max_alt}°], Az [{_az_dirs_str}]) during window.")
     
     # Metrics
