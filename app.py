@@ -1304,17 +1304,45 @@ with st.expander("ℹ️ How to Use"):
     *   **Export** the plan as CSV or PDF (PDF is priority-colour-coded; Cosmic Cataclysm PDFs also include `unistellar://` deeplinks).
     """)
 
+def _init_session_state(now):
+    """Initialize all session state keys that have not yet been set.
+    Call once at the top of the sidebar block, after computing `now`."""
+    ss = st.session_state
+    # Location
+    if "lat" not in ss:
+        ss.lat = None
+    if "lon" not in ss:
+        ss.lon = None
+    # Observation time
+    if "selected_date" not in ss:
+        ss["selected_date"] = now.date()
+    if "selected_time" not in ss:
+        if now.hour >= CONFIG["default_session_hour"]:
+            ss["selected_time"] = now.time()
+        else:
+            ss["selected_time"] = now.replace(
+                hour=CONFIG["default_session_hour"], minute=0, second=0, microsecond=0
+            ).time()
+    # Widget mirror keys (must match selected_* for initial render)
+    if "_new_date" not in ss:
+        ss["_new_date"] = ss["selected_date"]
+    if "_new_time" not in ss:
+        ss["_new_time"] = ss["selected_time"]
+    # Session duration
+    if "dur_idx" not in ss:
+        ss.dur_idx = CONFIG["default_dur_idx"]
+    # Azimuth filter
+    for _d in _AZ_LABELS:
+        if f"az_{_d}" not in ss:
+            ss[f"az_{_d}"] = False
+
+
 # ---------------------------
 # SIDEBAR: Location & Time
 # ---------------------------
 st.sidebar.header("📍 Location & Time")
 
 # 1. Location
-# Initialize session state with empty location
-if 'lat' not in st.session_state:
-    st.session_state.lat = None
-if 'lon' not in st.session_state:
-    st.session_state.lon = None
 
 def search_address():
     if st.session_state.addr_search:
@@ -1413,26 +1441,12 @@ if st.session_state.last_timezone != timezone_str:
 # 3. Date & Time
 st.sidebar.subheader("🕒 Observation Start")
 now = datetime.now(local_tz)
-
-# Initialize session state for date and time
-if 'selected_date' not in st.session_state:
-    st.session_state['selected_date'] = now.date()
-if 'selected_time' not in st.session_state:
-    if now.hour >= CONFIG["default_session_hour"]:
-        st.session_state['selected_time'] = now.time()
-    else:
-        st.session_state['selected_time'] = now.replace(hour=CONFIG["default_session_hour"], minute=0, second=0, microsecond=0).time()
+_init_session_state(now)
 
 def update_date():
     st.session_state.selected_date = st.session_state._new_date
 def update_time():
     st.session_state.selected_time = st.session_state._new_time
-
-# Ensure widget keys are initialized in session state to avoid warnings when value is omitted
-if '_new_date' not in st.session_state:
-    st.session_state['_new_date'] = st.session_state.selected_date
-if '_new_time' not in st.session_state:
-    st.session_state['_new_time'] = st.session_state.selected_time
 
 selected_date = st.sidebar.date_input("Date", key='_new_date', on_change=update_date)
 selected_time = st.sidebar.time_input("Time", key='_new_time', on_change=update_time)
@@ -1446,10 +1460,6 @@ st.sidebar.subheader("⏳ Duration")
 st.sidebar.caption("Length of your imaging session starting from the time above.")
 
 _duration_options_min = [60, 120, 180, 240, 300, 360, 480, 600, 720, 840, 960, 1080, 1200, 1320, 1440]
-
-# Persist selected index so it survives a format toggle without resetting the value
-if 'dur_idx' not in st.session_state:
-    st.session_state.dur_idx = CONFIG["default_dur_idx"]  # 720 min = 12 hrs
 
 _dur_fmt = st.sidebar.radio("Display as", ["hrs", "min"], horizontal=True, key="dur_fmt")
 if _dur_fmt == "hrs":
@@ -1475,9 +1485,6 @@ alt_range = st.sidebar.slider("Altitude Window (°)", 0, 90, (CONFIG["default_al
 min_alt, max_alt = alt_range
 # Compute az_dirs from session state before rendering so the status
 # caption can appear directly under the heading (above the checkboxes).
-for _d in _AZ_LABELS:
-    if f"az_{_d}" not in st.session_state:
-        st.session_state[f"az_{_d}"] = False
 az_dirs = {_d for _d in _AZ_LABELS if st.session_state.get(f"az_{_d}", False)}
 _az_selected_count = len(az_dirs)
 _az_status = (
