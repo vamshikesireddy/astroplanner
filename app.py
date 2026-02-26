@@ -1456,8 +1456,8 @@ min_alt, max_alt = alt_range
 # caption can appear directly under the heading (above the checkboxes).
 for _d in _AZ_LABELS:
     if f"az_{_d}" not in st.session_state:
-        st.session_state[f"az_{_d}"] = True
-az_dirs = {_d for _d in _AZ_LABELS if st.session_state.get(f"az_{_d}", True)}
+        st.session_state[f"az_{_d}"] = False
+az_dirs = {_d for _d in _AZ_LABELS if st.session_state.get(f"az_{_d}", False)}
 _az_selected_count = len(az_dirs)
 _az_status = (
     "📡 No filter — showing all 360°"
