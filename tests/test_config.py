@@ -3,7 +3,7 @@ import yaml
 import json
 import tempfile
 import pytest
-from backend.config import read_comets_config, read_comet_catalog, read_asteroids_config, read_dso_config
+from backend.config import read_comets_config, read_comet_catalog, read_asteroids_config, read_dso_config, read_exoplanets_config
 
 
 def test_read_comets_config_missing_file():
@@ -125,6 +125,37 @@ def test_read_dso_config_empty_file():
         assert result["messier"] == []
         assert result["bright_stars"] == []
         assert result["astrophotography_favorites"] == []
+    finally:
+        os.unlink(path)
+
+
+def test_read_exoplanets_config_missing_file():
+    result = read_exoplanets_config("/nonexistent/path.yaml")
+    assert result["cancelled"] == []
+    assert result["priorities"] == {}
+
+
+def test_read_exoplanets_config_existing_file():
+    data = {"cancelled": ["HAT-P-12 b"], "priorities": {"WASP-43 b": "HIGH"}}
+    with tempfile.NamedTemporaryFile(mode='w', suffix='.yaml', delete=False) as f:
+        yaml.dump(data, f)
+        path = f.name
+    try:
+        result = read_exoplanets_config(path)
+        assert result["cancelled"] == ["HAT-P-12 b"]
+        assert result["priorities"] == {"WASP-43 b": "HIGH"}
+    finally:
+        os.unlink(path)
+
+
+def test_read_exoplanets_config_empty_file():
+    with tempfile.NamedTemporaryFile(mode='w', suffix='.yaml', delete=False) as f:
+        yaml.dump({}, f)
+        path = f.name
+    try:
+        result = read_exoplanets_config(path)
+        assert result["cancelled"] == []
+        assert result["priorities"] == {}
     finally:
         os.unlink(path)
 

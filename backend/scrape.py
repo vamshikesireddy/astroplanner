@@ -207,5 +207,46 @@ def scrape_unistellar_priority_asteroids():
         return []
 
 
+_EXOPLANET_RE = re.compile(
+    r'\b(?:'
+    r'HAT-P-\d+\s+[a-z]\b|'          # HAT-P-12 b
+    r'WASP-\d+\s+[a-z]\b|'           # WASP-43 b
+    r'TOI-\d+\s+[a-z]\b|'            # TOI-1431 b
+    r'Kepler-\d+\s+[a-z]\b|'         # Kepler-7 b
+    r'GJ\s+\d+\w*\s+[a-z]\b|'        # GJ 3470 b
+    r'HD\s+\d+\w*\s+[a-z]\b|'        # HD 73583 b
+    r'L\s+\d+-\d+\s+[a-z]\b|'        # L 98-59 b
+    r'K2-\d+\s+[a-z]\b|'             # K2-18 b
+    r'LTT\s+\d+\w*\s+[a-z]\b|'       # LTT 9779 b
+    r'XO-\d+\s+[a-z]\b|'             # XO-3 b
+    r'TrES-\d+\s+[a-z]\b|'           # TrES-3 b
+    r'CoRoT-\d+\s+[a-z]\b'           # CoRoT-2 b
+    r')',
+    re.IGNORECASE
+)
+
+
+def scrape_unistellar_exoplanets():
+    """Scrape Unistellar exoplanet missions page → list of active planet name strings.
+
+    Returns [] on failure (network error, scrape error, no matches).
+    Uses same Scrapling/StealthyFetcher pattern as other scrapers.
+    """
+    url = "https://science.unistellar.com/exoplanets/missions/"
+    try:
+        _ensure_browser()
+        page = _fetch_page(url, headless=True, network_idle=True)
+        if page is None:
+            return []
+        # Gather text from all heading + text elements
+        elements = page.css("h1,h2,h3,h4,h5,p,.et_pb_text_inner,div")
+        text = " ".join(_deep_text(el) for el in elements)
+        found = list(dict.fromkeys(_EXOPLANET_RE.findall(text)))
+        return found
+    except Exception as e:
+        logger.error(f"Failed to scrape Unistellar exoplanets page: {e}")
+        return []
+
+
 if __name__ == "__main__":
     scrape_unistellar_table()

@@ -59,6 +59,18 @@ def read_dso_config(path):
     return data
 
 
+def read_exoplanets_config(path):
+    """Load exoplanets.yaml → dict with default keys."""
+    if os.path.exists(path):
+        with open(path, "r") as f:
+            data = yaml.safe_load(f) or {}
+    else:
+        data = {}
+    data.setdefault("cancelled", [])
+    data.setdefault("priorities", {})
+    return data
+
+
 def read_jpl_overrides(path):
     """Load jpl_id_overrides.yaml → dict with 'comets' and 'asteroids' keys."""
     if os.path.exists(path):
