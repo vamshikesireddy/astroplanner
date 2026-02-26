@@ -633,55 +633,62 @@ def _render_night_plan_builder(
                     help="365 = no restriction. Lower to focus on fresh events.",
                 )
 
-    # Row 2b: sort radio | time threshold | moon status
-    _n_row_b_cols = 3 if _has_moon else 2
-    _row_b = st.columns(_n_row_b_cols)
-
-    with _row_b[0]:
-        _sort_by = st.radio(
-            "Sort & filter plan by",
-            options=["Set Time", "Transit Time"],
-            index=0,
-            horizontal=True,
-            key=f"{section_key}_sortby",
-            help="Choose the time column used to sort and filter the plan.",
-        )
-
-    _min_time_input = None
-    with _row_b[1]:
-        _time_label = "Sets no earlier than" if _sort_by == "Set Time" else "Transits no earlier than"
-        _time_help = (
-            "Exclude targets that set before this time."
-            if _sort_by == "Set Time"
-            else "Exclude targets that transit before this time."
-        )
-        _min_time_input = st.time_input(
-            _time_label,
-            value=start_time.time(),
-            key=f"{section_key}_timethresh",
-            help=_time_help,
-        )
-
+    # Moon Status (before observation window)
     if _has_moon:
-        with _row_b[2]:
-            _sel_moon = st.multiselect(
-                "Moon Status",
-                options=_all_moon_statuses,
-                default=_all_moon_statuses,
-                key=f"{section_key}_moon",
-                help="Deselect '⛔ Avoid' to exclude targets too close to the Moon.",
-            )
+        _sel_moon = st.multiselect(
+            "Moon Status",
+            options=_all_moon_statuses,
+            default=_all_moon_statuses,
+            key=f"{section_key}_moon",
+            help="Deselect '⛔ Avoid' to exclude targets too close to the Moon.",
+        )
+
+    # Row 2b: observation window sliders
+    _start_default = min(max(start_time.hour, 14), 23)
+    _night_end_h = night_end.hour
+    _end_default = _night_end_h if _night_end_h <= 12 else 6
+    _row_wnd = st.columns(2)
+    with _row_wnd[0]:
+        _win_start_h = st.slider(
+            "Start (tonight)",
+            min_value=14, max_value=23,
+            value=_start_default,
+            format="%02d:00",
+            key=f"{section_key}_win_start",
+            help="Slide left to begin your plan earlier in the evening.",
+        )
+    with _row_wnd[1]:
+        _win_end_h = st.slider(
+            "End (next morning)",
+            min_value=0, max_value=12,
+            value=_end_default,
+            format="%02d:00",
+            key=f"{section_key}_win_end",
+            help="Slide right to extend your session later into the morning.",
+        )
+    _win_hours = (_win_end_h + 24 - _win_start_h) % 24 or 24
+    st.caption(f"Window: **{_win_start_h:02d}:00** tonight → **{_win_end_h:02d}:00** next morning — **{_win_hours} hrs**")
+
+    # Sort radio
+    _sort_by = st.radio(
+        "Sort plan by",
+        options=["Set Time", "Transit Time"],
+        index=0,
+        horizontal=True,
+        key=f"{section_key}_sortby",
+        help="Order the planned targets by when they set or when they transit.",
+    )
 
     # Dynamic caption — rendered after radio so it reflects the live choice
     if _sort_by == "Set Time":
         st.caption(
-            "Filter observable targets, then build a sorted plan. "
-            "Plan sorted by **Set Time** — targets that set soonest appear first."
+            "Plan includes targets visible during the observation window, "
+            "sorted by **Set Time** — targets that set soonest appear first."
         )
     else:
         st.caption(
-            "Filter observable targets, then build a sorted plan. "
-            "Plan sorted by **Transit Time** — targets that transit soonest appear first."
+            "Plan includes targets visible during the observation window, "
+            "sorted by **Transit Time** — targets that transit soonest appear first."
         )
 
     # ── Row 3: action buttons ─────────────────────────────────────────
@@ -748,26 +755,32 @@ def _render_night_plan_builder(
                     _disc_parsed.isna() | (_disc_parsed >= _disc_cutoff)
                 ]
 
-            # Filter: minimum set/transit time (matches sort radio selection)
-            _time_col = '_transit_datetime' if _sort_by == 'Transit Time' else '_set_datetime'
-            if _time_col in _plan_src.columns and _min_time_input is not None:
-                _min_time_dt = local_tz.localize(
-                    datetime.combine(start_time.date(), _min_time_input)
+            # Filter: observation window — start is tonight, end is always next morning
+            if True:
+                _win_start_dt = local_tz.localize(
+                    datetime(start_time.year, start_time.month, start_time.day, _win_start_h, 0)
                 )
-                if _min_time_dt < start_time:
-                    _min_time_dt += timedelta(days=1)
+                _win_end_dt = local_tz.localize(
+                    datetime(start_time.year, start_time.month, start_time.day, _win_end_h, 0)
+                    + timedelta(days=1)
+                )
 
-                def _passes_time_filter(t_dt):
-                    if pd.isnull(t_dt):
+                def _in_obs_window(row):
+                    status = str(row.get('Status', ''))
+                    if 'Always Up' in status:
                         return True
+                    r = row.get('_rise_datetime')
+                    s = row.get('_set_datetime')
+                    if pd.isnull(r) or pd.isnull(s):
+                        return True  # keep if timing unknown
                     try:
-                        return t_dt >= _min_time_dt
+                        # Visible during window if rises before window ends AND sets after window starts
+                        return r < _win_end_dt and s > _win_start_dt
                     except (TypeError, ValueError):
                         return True
 
-                _plan_src = _plan_src[
-                    _plan_src[_time_col].apply(_passes_time_filter)
-                ]
+                if '_rise_datetime' in _plan_src.columns and '_set_datetime' in _plan_src.columns:
+                    _plan_src = _plan_src[_plan_src.apply(_in_obs_window, axis=1)]
 
             # Filter: Moon Status
             if (_sel_moon is not None and 'Moon Status' in _plan_src.columns
