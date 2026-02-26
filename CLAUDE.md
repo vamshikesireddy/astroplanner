@@ -272,21 +272,26 @@ _render_night_plan_builder(
 | `csv_data` | DataFrame for "All" CSV button (defaults to `df_obs` if `None`) |
 | `section_key` | Unique prefix for Streamlit widget keys (prevents duplicate key errors) |
 
-#### Adaptive filter layout (two-row split)
+#### Adaptive filter layout
 
-Filters are split across two rows to avoid cramped columns:
+Filters render in this order:
 
-- **Row A** (data-specific filters): Magnitude slider, Type multiselect, Discovery recency — only shown if the section has these columns. Sections without data-specific filters skip this row entirely.
-- **Row B** (always present): Sort radio (Set Time / Transit Time) + contextual time threshold + Moon Status — every section gets this row. 3 columns when Moon Status is available, 2 columns otherwise.
+1. **Priority multiselect** (if `pri_col`)
+2. Caption: "Refine candidate pool…"
+3. **Row A** (data-specific): Magnitude slider, Type multiselect, Discovery recency — only shown if section has these columns
+4. **Moon Status** multiselect — full-width, always shown if column exists
+5. **Observation window** (2 cols): `Start (tonight)` slider 14–23 | `End (next morning)` slider 0–12 — both `format="%02d:00"`; end is **always `start_time.date() + timedelta(days=1)`** (no cross-midnight check needed); live caption: `Window: HH:00 tonight → HH:00 next morning — N hrs`
+6. **Sort plan by** radio (Set Time / Transit Time) — controls order only, not filtering
+7. Caption reflecting sort choice
 
-| Section | Row A | Row B | Priority row |
-|---|---|---|---|
-| DSO | Magnitude + Type (2 cols) | Sort radio + Time threshold + Moon Status (3 cols) | — |
-| Planet | — | Sort radio + Time threshold + Moon Status (3 cols) | — |
-| Comet My List | — | Sort radio + Time threshold + Moon Status (3 cols) | ⭐ PRIORITY / (unassigned) |
-| Comet Catalog | — | Sort radio + Time threshold + Moon Status (3 cols) | — |
-| Asteroid | — | Sort radio + Time threshold + Moon Status (3 cols) | ⭐ PRIORITY / (unassigned) |
-| Cosmic | Magnitude + Type + Discovery (3 cols) | Sort radio + Time threshold + Moon Status (3 cols) | URGENT / HIGH / LOW / (unassigned) |
+| Section | Row A | Priority row |
+|---|---|---|
+| DSO | Magnitude + Type | — |
+| Planet | — | — |
+| Comet My List | — | ⭐ PRIORITY / (unassigned) |
+| Comet Catalog | — | — |
+| Asteroid | — | ⭐ PRIORITY / (unassigned) |
+| Cosmic | Magnitude + Type + Discovery | URGENT / HIGH / LOW / (unassigned) |
 
 #### Dynamic priority detection
 
@@ -321,7 +326,7 @@ disc_col  = next((c for c in df_display.columns if 'disc' in c.lower() or ('date
 2. Magnitude range (if `vmag_col`)
 3. Type/class (if `type_col`)
 4. Discovery recency (if `disc_col`)
-5. Minimum time threshold (always — uses `_set_datetime` or `_transit_datetime` based on Sort radio selection)
+5. Observation window (always) — keeps targets where `_rise_datetime < win_end_dt AND _set_datetime > win_start_dt`; "Always Up" targets always pass; `win_end_dt` is always `start_time.date() + timedelta(days=1)` (end slider is always next morning, no cross-midnight check)
 6. Moon Status (always if column exists — only filters when user deselects a status)
 
 #### Export formats
