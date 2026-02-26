@@ -1453,7 +1453,6 @@ st.sidebar.caption("Applies to lists and visibility warnings.")
 alt_range = st.sidebar.slider("Altitude Window (°)", 0, 90, (20, 90), help="Target must be within this altitude range (Min to Max).")
 min_alt, max_alt = alt_range
 st.sidebar.markdown("**🧭 Azimuth Direction**")
-st.sidebar.caption("All 360° by default. Check specific directions to show only objects visible in those areas (e.g. SE only).")
 _az_cols = st.sidebar.columns(2)
 _az_btn_cols = st.sidebar.columns(2)
 with _az_btn_cols[0]:
@@ -1473,6 +1472,12 @@ for _i, _d in enumerate(_AZ_LABELS):
         if st.checkbox(_d, key=f"az_{_d}"):
             az_dirs.add(_d)
         st.caption(_AZ_CAPTIONS[_d])
+_az_selected_count = len(az_dirs)
+if _az_selected_count == 0 or _az_selected_count == len(_AZ_LABELS):
+    st.sidebar.caption("📡 No filter — showing all 360°")
+else:
+    _az_ordered = [d for d in _AZ_LABELS if d in az_dirs]
+    st.sidebar.caption(f"📡 Filtering to: {', '.join(_az_ordered)} ({_az_selected_count} of {len(_AZ_LABELS)} directions)")
 dec_range = st.sidebar.slider("Declination Window (°)", -90, 90, (-90, 90), help="Filter targets by declination. Set a range to exclude objects too far north or south for your site.")
 min_dec, max_dec = dec_range
 min_moon_sep = st.sidebar.slider("Min Moon Separation Filter (°)", 0, 180, 0, help="Optional: Hide targets closer than this to the Moon. Default 0 shows all.")
