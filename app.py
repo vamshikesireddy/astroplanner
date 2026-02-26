@@ -1051,6 +1051,7 @@ COMET_CATALOG_FILE = "comets_catalog.json"
 _MOON_SEP_COL_CONFIG = {
     "Moon Sep (°)": st.column_config.TextColumn("Moon Sep (°)"),
     "Moon Status": st.column_config.TextColumn("Moon Status"),
+    "_dec_deg": st.column_config.NumberColumn("Dec", format="%+.2f°"),
 }
 
 # Aliases for comets that appear under alternate designations on external pages
@@ -1808,7 +1809,7 @@ def render_dso_section(location, start_time, duration, min_alt, max_alt, az_dirs
             df_filt_d = df_dsos[~df_dsos["is_observable"]].copy()
 
             display_cols_d = ["Name", "Common Name", "Type", "Magnitude", "Constellation",
-                              "Rise", "Transit", "Set", "RA", "Dec", "Status", "Moon Sep (°)", "Moon Status"]
+                              "Rise", "Transit", "Set", "RA", "_dec_deg", "Status", "Moon Sep (°)", "Moon Status"]
 
             def display_dso_table(df_in):
                 show = [c for c in display_cols_d if c in df_in.columns]
@@ -1993,7 +1994,7 @@ def render_planet_section(location, start_time, duration, min_alt, max_alt, az_d
             df_filt_p = df_planets[~df_planets["is_observable"]].copy()
 
             display_cols_p = ["Name", "Constellation", "Rise", "Transit", "Set",
-                              "RA", "Dec", "Status", "Moon Sep (°)", "Moon Status"]
+                              "RA", "_dec_deg", "Status", "Moon Sep (°)", "Moon Status"]
 
             tab_obs_p, tab_filt_p = st.tabs([
                 f"🎯 Observable ({len(df_obs_p)})",
@@ -2027,8 +2028,8 @@ def render_planet_section(location, start_time, duration, min_alt, max_alt, az_d
             with tab_filt_p:
                 st.caption("Planets not meeting your filters during the observation window.")
                 if not df_filt_p.empty:
-                    show_filt_p = [c for c in ["Name", "filter_reason", "Rise", "Transit", "Set", "RA", "Dec", "Status"] if c in df_filt_p.columns]
-                    st.dataframe(df_filt_p[show_filt_p], hide_index=True, width="stretch")
+                    show_filt_p = [c for c in ["Name", "filter_reason", "Rise", "Transit", "Set", "RA", "_dec_deg", "Status"] if c in df_filt_p.columns]
+                    st.dataframe(df_filt_p[show_filt_p], hide_index=True, width="stretch", column_config=_MOON_SEP_COL_CONFIG)
 
     selected_target = st.selectbox("Select a Planet", list(planet_map.keys()))
 
@@ -2407,7 +2408,7 @@ def render_comet_section(location, start_time, duration, min_alt, max_alt, az_di
                 df_filt_c = df_comets[~df_comets["is_observable"]].copy()
 
                 display_cols_c = ["Name", "Priority", "Window", "Constellation", "Rise", "Transit", "Set",
-                                  "RA", "Dec", "Status", "Moon Sep (°)", "Moon Status"]
+                                  "RA", "_dec_deg", "Status", "Moon Sep (°)", "Moon Status"]
 
                 def display_comet_table(df_in):
                     show = [c for c in display_cols_c if c in df_in.columns]
@@ -2632,7 +2633,7 @@ def render_comet_section(location, start_time, duration, min_alt, max_alt, az_di
                             f"\U0001f47b Unobservable ({len(_df_filt_cat)})"
                         ])
                         _show_cols_cat = ["Name", "Constellation", "Rise", "Transit", "Set",
-                                          "RA", "Dec", "Status"]
+                                          "RA", "_dec_deg", "Status"]
                         with _tab_obs_cat:
                             st.subheader("Observable Comets (Catalog)")
                             _chart_sort_cat = plot_visibility_timeline(
@@ -3044,7 +3045,7 @@ def render_asteroid_section(location, start_time, duration, min_alt, max_alt, az
             df_filt_a = df_asteroids[~df_asteroids["is_observable"]].copy()
 
             display_cols_a = ["Name", "Priority", "Window", "Constellation", "Rise", "Transit", "Set",
-                              "RA", "Dec", "Status", "Moon Sep (°)", "Moon Status"]
+                              "RA", "_dec_deg", "Status", "Moon Sep (°)", "Moon Status"]
 
             def display_asteroid_table(df_in):
                 show = [c for c in display_cols_a if c in df_in.columns]
@@ -3099,8 +3100,8 @@ def render_asteroid_section(location, start_time, duration, min_alt, max_alt, az
             with tab_filt_a:
                 st.caption("Asteroids not meeting your filters within the observation window.")
                 if not df_filt_a.empty:
-                    filt_show = [c for c in ["Name", "filter_reason", "Rise", "Transit", "Set", "RA", "Dec", "Status"] if c in df_filt_a.columns]
-                    st.dataframe(df_filt_a[filt_show], hide_index=True, width="stretch")
+                    filt_show = [c for c in ["Name", "filter_reason", "Rise", "Transit", "Set", "RA", "_dec_deg", "Status"] if c in df_filt_a.columns]
+                    st.dataframe(df_filt_a[filt_show], hide_index=True, width="stretch", column_config=_MOON_SEP_COL_CONFIG)
 
             st.download_button(
                 "Download Asteroid Data (CSV)",
