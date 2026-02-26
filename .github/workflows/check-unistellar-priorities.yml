@@ -24,7 +24,7 @@ jobs:
 
       - name: Install dependencies
         run: |
-          pip install "scrapling[fetchers]" pyyaml
+          pip install "scrapling[fetchers]" pyyaml pandas
           python -m patchright install chromium
 
       - name: Ensure issue labels exist
