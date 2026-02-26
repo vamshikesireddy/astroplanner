@@ -42,6 +42,7 @@ except ImportError:
 from backend.resolvers import resolve_simbad, resolve_horizons, get_horizons_ephemerides, resolve_planet, get_planet_ephemerides
 from backend.core import compute_trajectory, calculate_planning_info, azimuth_to_compass, moon_sep_deg
 from backend.scrape import scrape_unistellar_table, scrape_unistellar_priority_comets, scrape_unistellar_priority_asteroids
+from backend.github import create_issue as _gh_create_issue
 
 # Suppress Astropy warnings about coordinate frame transformations (Geocentric vs Topocentric)
 warnings.filterwarnings("ignore", message=".*transforming other coordinates.*")
@@ -403,16 +404,15 @@ def _sort_df_like_chart(df, sort_option, priority_col=None):
 # Do NOT use a classic token with full repo or admin scopes.
 def _send_github_notification(title, body):
     """Creates a GitHub Issue to notify admin. Reusable across all sections."""
-    token = st.secrets.get("GITHUB_TOKEN")
-    repo_name = st.secrets.get("GITHUB_REPO")
-    if token and repo_name and Github:
-        try:
-            g = Github(token)
-            repo = g.get_repo(repo_name)
-            me = g.get_user()
-            repo.create_issue(title=title, body=body, assignee=me.login)
-        except Exception as e:
-            print(f"Failed to send notification: {e}")
+    try:
+        _gh_create_issue(
+            st.secrets.get("GITHUB_TOKEN"),
+            st.secrets.get("GITHUB_REPO"),
+            title,
+            body,
+        )
+    except Exception as e:
+        print(f"Failed to send notification: {e}")
 
 
 def _sanitize_csv_df(df: pd.DataFrame) -> pd.DataFrame:
