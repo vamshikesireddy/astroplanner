@@ -8,6 +8,7 @@ import math
 import pandas as pd
 import geocoder
 import pytz
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timedelta
 from timezonefinder import TimezoneFinder
 import altair as alt
@@ -1052,8 +1053,7 @@ def get_comet_summary(lat, lon, start_time, comet_tuple):
     except Exception:
         moon_loc_inner = None
         moon_illum_inner = 0
-    data = []
-    for comet_name in comet_tuple:
+    def _fetch(comet_name):
         jpl_id = _get_comet_jpl_id(comet_name)
         try:
             _, sky_coord = resolve_horizons(jpl_id, obs_time_str=obs_time_str)
@@ -1068,10 +1068,13 @@ def get_comet_summary(lat, lon, start_time, comet_tuple):
                 "Moon Status": get_moon_status(moon_illum_inner, moon_sep) if moon_loc_inner else "",
             }
             row.update(details)
-            data.append(row)
+            return row
         except Exception:
-            continue
-    return pd.DataFrame(data)
+            return None
+
+    with ThreadPoolExecutor(max_workers=min(len(comet_tuple), 8)) as executor:
+        results = list(executor.map(_fetch, comet_tuple))
+    return pd.DataFrame([r for r in results if r is not None])
 
 
 @st.cache_data(ttl=86400, show_spinner=False)
@@ -1164,8 +1167,7 @@ def get_asteroid_summary(lat, lon, start_time, asteroid_tuple):
     except Exception:
         moon_loc_inner = None
         moon_illum_inner = 0
-    data = []
-    for asteroid_name in asteroid_tuple:
+    def _fetch(asteroid_name):
         jpl_id = _asteroid_jpl_id(asteroid_name)
         try:
             _, sky_coord = resolve_horizons(jpl_id, obs_time_str=obs_time_str)
@@ -1180,10 +1182,13 @@ def get_asteroid_summary(lat, lon, start_time, asteroid_tuple):
                 "Moon Status": get_moon_status(moon_illum_inner, moon_sep) if moon_loc_inner else "",
             }
             row.update(details)
-            data.append(row)
+            return row
         except Exception:
-            continue
-    return pd.DataFrame(data)
+            return None
+
+    with ThreadPoolExecutor(max_workers=min(len(asteroid_tuple), 8)) as executor:
+        results = list(executor.map(_fetch, asteroid_tuple))
+    return pd.DataFrame([r for r in results if r is not None])
 
 
 @st.cache_data(ttl=86400, show_spinner=False)
