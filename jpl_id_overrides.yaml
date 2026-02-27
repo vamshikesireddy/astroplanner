@@ -6,4 +6,5 @@ comets:
   "C/2025 N1 (ATLAS)": "3I"    # redesignated as 3I/ATLAS (interstellar)
   "240P": "90001202"             # 240P/NEAT Fragment A
   "240P-B": "90001203"           # 240P/NEAT Fragment B
+  "C/2025 K1 (ATLAS)": "2025 K1" # multi-fragment; bare C/ prefix is ambiguous in Horizons
 asteroids: {}
