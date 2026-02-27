@@ -1212,10 +1212,15 @@ def get_comet_summary(lat, lon, start_time, comet_tuple):
         return name.split('(')[0].strip()
 
     def _fetch(comet_name):
+        import time as _time
         from backend.sbdb import sbdb_lookup  # import here, not inside except block
         jpl_id = _comet_id_local(comet_name)
         try:
-            _, sky_coord = resolve_horizons(jpl_id, obs_time_str=obs_time_str)
+            try:
+                _, sky_coord = resolve_horizons(jpl_id, obs_time_str=obs_time_str)
+            except Exception:
+                _time.sleep(1.5)  # one retry after backoff — JPL rate-limits parallel requests
+                _, sky_coord = resolve_horizons(jpl_id, obs_time_str=obs_time_str)
             details = calculate_planning_info(sky_coord, location, start_time)
             moon_sep = moon_sep_deg(sky_coord, moon_loc_inner) if moon_loc_inner else 0.0
             row = {
@@ -1383,10 +1388,15 @@ def get_asteroid_summary(lat, lon, start_time, asteroid_tuple):
         return name
 
     def _fetch(asteroid_name):
+        import time as _time
         from backend.sbdb import sbdb_lookup  # import here, not inside except block
         jpl_id = _asteroid_id_local(asteroid_name)
         try:
-            _, sky_coord = resolve_horizons(jpl_id, obs_time_str=obs_time_str)
+            try:
+                _, sky_coord = resolve_horizons(jpl_id, obs_time_str=obs_time_str)
+            except Exception:
+                _time.sleep(1.5)  # one retry after backoff — JPL rate-limits parallel requests
+                _, sky_coord = resolve_horizons(jpl_id, obs_time_str=obs_time_str)
             details = calculate_planning_info(sky_coord, location, start_time)
             moon_sep = moon_sep_deg(sky_coord, moon_loc_inner) if moon_loc_inner else 0.0
             row = {
