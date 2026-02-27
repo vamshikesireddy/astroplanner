@@ -456,6 +456,22 @@ def _send_github_notification(title, body):
         print(f"Failed to send notification: {e}")
 
 
+def _notify_jpl_failure(name, jpl_id_tried, error_msg):
+    """Fire a GitHub Issue for a JPL resolution failure — once per session per name."""
+    notified = st.session_state.setdefault("_jpl_notified", set())
+    if name in notified:
+        return
+    notified.add(name)
+    title = f"⚠️ JPL resolution failed: {name}"
+    body = (
+        f"**Object:** `{name}`\n"
+        f"**JPL ID tried:** `{jpl_id_tried}`\n"
+        f"**Error:** {error_msg}\n\n"
+        f"Set a permanent fix in `jpl_id_overrides.yaml` or use the admin panel override.\n"
+    )
+    _send_github_notification(title, body)
+
+
 def _sanitize_csv_df(df: pd.DataFrame) -> pd.DataFrame:
     """Escape leading formula characters in string columns for safe CSV export."""
     _FORMULA_PREFIXES = ('=', '+', '-', '@')
@@ -2442,11 +2458,54 @@ def render_comet_section(location, start_time, duration, min_alt, max_alt, az_di
                             else:
                                 st.warning(f"'{new_comet_direct}' is already in the list.")
 
+                    st.markdown("---")
+                    # JPL Resolution Failures
+                    _comet_failures_df = st.session_state.get("_comet_jpl_failures", None)
+                    if _comet_failures_df is not None and not _comet_failures_df.empty:
+                        st.markdown("### ⚠️ JPL Resolution Failures")
+                        st.caption(f"{len(_comet_failures_df)} comet(s) could not be resolved via JPL Horizons.")
+                        for _, _fail_row in _comet_failures_df.iterrows():
+                            _fname = _fail_row["Name"]
+                            _ftried = _fail_row.get("_jpl_id_tried", "?")
+                            _ferr = _fail_row.get("_jpl_error", "Unknown error")
+                            with st.container():
+                                st.markdown(f"**{_fname}** — tried `{_ftried}`")
+                                st.caption(str(_ferr))
+                                _ovr_id = st.text_input(
+                                    "Set JPL ID override",
+                                    key=f"jpl_comet_ovr_{_fname}",
+                                    placeholder="Enter JPL designation or SPK-ID",
+                                )
+                                if st.button("💾 Save Override", key=f"jpl_comet_btn_{_fname}"):
+                                    if _ovr_id.strip():
+                                        from backend.config import read_jpl_overrides, write_jpl_overrides
+                                        _ovr_data = read_jpl_overrides(JPL_OVERRIDES_FILE)
+                                        _ovr_data["comets"][_fname] = _ovr_id.strip()
+                                        write_jpl_overrides(JPL_OVERRIDES_FILE, _ovr_data)
+                                        _load_jpl_overrides.clear()
+                                        get_comet_summary.clear()
+                                        st.success(f"Override saved: **{_fname}** → `{_ovr_id.strip()}`")
+                                        st.rerun()
+                                    else:
+                                        st.warning("Enter a JPL ID before saving.")
+                                st.divider()
+                    else:
+                        st.success("✅ All comets resolved via JPL Horizons.")
+
         # Batch visibility table
         if lat is None or lon is None or (lat == 0.0 and lon == 0.0):
             st.info("Set location in sidebar to see visibility summary for all comets.")
         elif active_comets:
             df_comets = get_comet_summary(lat, lon, start_time, tuple(active_comets))
+
+            # Store JPL failure rows in session state for admin panel + fire notifications
+            if not df_comets.empty and "_resolve_error" in df_comets.columns:
+                _cf = df_comets[df_comets["_resolve_error"] == True]
+                st.session_state["_comet_jpl_failures"] = _cf
+                for _, _fr in _cf.iterrows():
+                    _notify_jpl_failure(_fr["Name"], _fr.get("_jpl_id_tried", "?"), _fr.get("_jpl_error", ""))
+            else:
+                st.session_state["_comet_jpl_failures"] = pd.DataFrame()
 
             if not df_comets.empty:
                 # Priority column: admin override > unistellar priority > empty
@@ -3089,11 +3148,54 @@ def render_asteroid_section(location, start_time, duration, min_alt, max_alt, az
                         else:
                             st.warning(f"'{new_asteroid_direct}' is already in the list.")
 
+                st.markdown("---")
+                # JPL Resolution Failures
+                _asteroid_failures_df = st.session_state.get("_asteroid_jpl_failures", None)
+                if _asteroid_failures_df is not None and not _asteroid_failures_df.empty:
+                    st.markdown("### ⚠️ JPL Resolution Failures")
+                    st.caption(f"{len(_asteroid_failures_df)} asteroid(s) could not be resolved via JPL Horizons.")
+                    for _, _fail_row in _asteroid_failures_df.iterrows():
+                        _fname = _fail_row["Name"]
+                        _ftried = _fail_row.get("_jpl_id_tried", "?")
+                        _ferr = _fail_row.get("_jpl_error", "Unknown error")
+                        with st.container():
+                            st.markdown(f"**{_fname}** — tried `{_ftried}`")
+                            st.caption(str(_ferr))
+                            _ovr_id = st.text_input(
+                                "Set JPL ID override",
+                                key=f"jpl_asteroid_ovr_{_fname}",
+                                placeholder="Enter JPL designation or SPK-ID",
+                            )
+                            if st.button("💾 Save Override", key=f"jpl_asteroid_btn_{_fname}"):
+                                if _ovr_id.strip():
+                                    from backend.config import read_jpl_overrides, write_jpl_overrides
+                                    _ovr_data = read_jpl_overrides(JPL_OVERRIDES_FILE)
+                                    _ovr_data["asteroids"][_fname] = _ovr_id.strip()
+                                    write_jpl_overrides(JPL_OVERRIDES_FILE, _ovr_data)
+                                    _load_jpl_overrides.clear()
+                                    get_asteroid_summary.clear()
+                                    st.success(f"Override saved: **{_fname}** → `{_ovr_id.strip()}`")
+                                    st.rerun()
+                                else:
+                                    st.warning("Enter a JPL ID before saving.")
+                            st.divider()
+                else:
+                    st.success("✅ All asteroids resolved via JPL Horizons.")
+
     # Batch visibility table
     if lat is None or lon is None or (lat == 0.0 and lon == 0.0):
         st.info("Set location in sidebar to see visibility summary for all asteroids.")
     elif active_asteroids:
         df_asteroids = get_asteroid_summary(lat, lon, start_time, tuple(active_asteroids))
+
+        # Store JPL failure rows in session state for admin panel + fire notifications
+        if not df_asteroids.empty and "_resolve_error" in df_asteroids.columns:
+            _af = df_asteroids[df_asteroids["_resolve_error"] == True]
+            st.session_state["_asteroid_jpl_failures"] = _af
+            for _, _fr in _af.iterrows():
+                _notify_jpl_failure(_fr["Name"], _fr.get("_jpl_id_tried", "?"), _fr.get("_jpl_error", ""))
+        else:
+            st.session_state["_asteroid_jpl_failures"] = pd.DataFrame()
 
         if not df_asteroids.empty:
             df_asteroids["Priority"] = df_asteroids["Name"].apply(
