@@ -66,6 +66,7 @@ from backend.app_logic import (
     _AZ_OCTANTS, _AZ_LABELS, _AZ_CAPTIONS, az_in_selected,
     get_moon_status, _check_row_observability,
     _sort_df_like_chart, build_night_plan,
+    _sanitize_csv_df, _add_peak_alt_session,
 )
 
 
@@ -355,44 +356,6 @@ def _notify_jpl_failure(name, jpl_id_tried, error_msg):
         f"Set a permanent fix in `jpl_id_overrides.yaml` or use the admin panel override.\n"
     )
     _send_github_notification(title, body)
-
-
-def _sanitize_csv_df(df: pd.DataFrame) -> pd.DataFrame:
-    """Escape leading formula characters in string columns for safe CSV export."""
-    _FORMULA_PREFIXES = ('=', '+', '-', '@')
-    df_safe = df.copy()
-    for col in df_safe.select_dtypes(include='object').columns:
-        df_safe[col] = df_safe[col].apply(
-            lambda x: f"'{x}" if isinstance(x, str) and x and x[0] in _FORMULA_PREFIXES else x
-        )
-    return df_safe
-
-
-def _add_peak_alt_session(df, location, win_start_tz, win_end_tz, n_steps=5):
-    """Add _peak_alt_session column (peak altitude during obs window) to df in-place.
-
-    Uses compute_peak_alt_in_window at n_steps sample points.
-    Falls back to None when location or coordinates are missing.
-    Returns df for chaining.
-    """
-    if location is None or df.empty or '_ra_deg' not in df.columns or '_dec_deg' not in df.columns:
-        df['_peak_alt_session'] = None
-        return df
-    peaks = []
-    for _, row in df.iterrows():
-        ra = row.get('_ra_deg')
-        dec = row.get('_dec_deg')
-        if pd.notnull(ra) and pd.notnull(dec):
-            try:
-                peaks.append(compute_peak_alt_in_window(
-                    float(ra), float(dec), location, win_start_tz, win_end_tz, n_steps=n_steps
-                ))
-            except Exception:
-                peaks.append(None)
-        else:
-            peaks.append(None)
-    df['_peak_alt_session'] = peaks
-    return df
 
 
 

@@ -157,3 +157,38 @@ def test_build_night_plan_returns_copy_not_original():
     df = _make_sort_df().iloc[:2].copy()
     result = build_night_plan(df, sort_by="set")
     assert result is not df  # must be a copy
+
+
+# ── _sanitize_csv_df and _add_peak_alt_session tests ──────────────────────────
+
+import pandas as pd
+from backend.app_logic import _sanitize_csv_df, _add_peak_alt_session
+
+
+def test_sanitize_csv_df_escapes_formula_prefixes():
+    df = pd.DataFrame({"A": ["=SUM(1)", "+PROFIT", "normal", "@risk", "-val"]})
+    result = _sanitize_csv_df(df)
+    assert result["A"].tolist() == ["'=SUM(1)", "'+PROFIT", "normal", "'@risk", "'-val"]
+
+def test_sanitize_csv_df_leaves_numeric_columns_alone():
+    df = pd.DataFrame({"A": [1, 2.5, None], "B": ["=bad", "ok", "ok"]})
+    result = _sanitize_csv_df(df)
+    # pandas upcasts int→float when None is present; NaN == NaN is False so
+    # check non-null values and dtype instead of exact list equality
+    assert result["A"].dtype.kind == 'f'            # numeric (float) — not object
+    assert result["A"].iloc[0] == 1.0
+    assert result["A"].iloc[1] == 2.5
+    assert pd.isna(result["A"].iloc[2])             # None → NaN, still numeric
+    assert result["B"].iloc[0] == "'=bad"           # string escaped
+
+def test_add_peak_alt_session_no_location_returns_none_column():
+    df = pd.DataFrame({"_ra_deg": [10.0], "_dec_deg": [20.0]})
+    result = _add_peak_alt_session(df, location=None, win_start_tz=None, win_end_tz=None)
+    assert "_peak_alt_session" in result.columns
+    assert result["_peak_alt_session"].isna().all()
+
+def test_add_peak_alt_session_missing_coord_cols_returns_none_column():
+    df = pd.DataFrame({"Name": ["X"]})  # no _ra_deg / _dec_deg
+    result = _add_peak_alt_session(df, location=None, win_start_tz=None, win_end_tz=None)
+    assert "_peak_alt_session" in result.columns
+    assert result["_peak_alt_session"].isna().all()
