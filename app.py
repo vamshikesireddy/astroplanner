@@ -1588,23 +1588,21 @@ _az_status = (
     else f"📡 Filtering to: {', '.join(d for d in _AZ_LABELS if d in az_dirs)} ({_az_selected_count} of {len(_AZ_LABELS)} directions)"
 )
 st.sidebar.markdown("**🧭 Azimuth Direction**")
-st.sidebar.caption(_az_status)
+if _az_selected_count == 0 or _az_selected_count == len(_AZ_LABELS):
+    st.sidebar.caption("Check one or more directions to restrict targets to a specific part of the sky.")
+else:
+    st.sidebar.caption(_az_status)
 _az_cols = st.sidebar.columns(2)
-_az_btn_cols = st.sidebar.columns(2)
-with _az_btn_cols[0]:
-    if st.button("Select All", key="az_select_all", use_container_width=True):
-        for _d in _AZ_LABELS:
-            st.session_state[f"az_{_d}"] = True
-with _az_btn_cols[1]:
-    if st.button("Clear All", key="az_clear_all", use_container_width=True):
-        for _d in _AZ_LABELS:
-            st.session_state[f"az_{_d}"] = False
 az_dirs = set()
 for _i, _d in enumerate(_AZ_LABELS):
     with _az_cols[_i % 2]:
         if st.checkbox(_d, key=f"az_{_d}"):
             az_dirs.add(_d)
         st.caption(_AZ_CAPTIONS[_d])
+if _az_selected_count > 0 and _az_selected_count < len(_AZ_LABELS):
+    if st.sidebar.button("✕ Clear direction filter", key="az_clear_all", use_container_width=True):
+        for _d in _AZ_LABELS:
+            st.session_state[f"az_{_d}"] = False
 dec_range = st.sidebar.slider("Declination Window (°)", -90, 90, (-90, 90), help="Filter targets by declination. Set a range to exclude objects too far north or south for your site.")
 min_dec, max_dec = dec_range
 min_moon_sep = st.sidebar.slider("Min Moon Separation Filter (°)", 0, 180, 0, help="Optional: Hide targets closer than this to the Moon. Default 0 shows all.")
