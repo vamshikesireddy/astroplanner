@@ -49,10 +49,6 @@ warnings.filterwarnings("ignore", message=".*transforming other coordinates.*")
 
 # ── App-wide configuration constants ──────────────────────────────────────
 CONFIG = {
-    # Moon status thresholds
-    "moon_dark_sky_illum": 15,    # illumination % → Dark Sky below this
-    "moon_avoid_sep":      30,    # moon sep ° → Avoid below this
-    "moon_caution_sep":    60,    # moon sep ° → Caution below this
     # Gantt chart sizing
     "gantt_row_height":    60,    # px per row
     "gantt_min_height":   250,    # minimum chart height px
