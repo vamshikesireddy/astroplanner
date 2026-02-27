@@ -1119,7 +1119,9 @@ def _render_night_plan_builder(
                     with _dl1:
                         st.download_button(
                             "📥 Download Plan (CSV)",
-                            data=_sanitize_csv_df(_plan_display).to_csv(index=False).encode('utf-8'),
+                            data=_sanitize_csv_df(
+                                _plan_display.drop(columns=['Peak Alt (°)'], errors='ignore')
+                            ).to_csv(index=False).encode('utf-8'),
                             file_name=f"night_plan_{start_time.strftime('%Y%m%d_%H%M')}.csv",
                             mime="text/csv",
                             use_container_width=True,
