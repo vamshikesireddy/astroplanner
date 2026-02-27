@@ -1328,12 +1328,45 @@ def get_asteroid_summary(lat, lon, start_time, asteroid_tuple):
             }
             row.update(details)
             return row
-        except Exception:
-            return None
+        except Exception as first_exc:
+            # SBDB auto-resolve fallback
+            from backend.sbdb import sbdb_lookup
+            sbdb_id = sbdb_lookup(asteroid_name)
+            if sbdb_id and sbdb_id != jpl_id:
+                try:
+                    _, sky_coord = resolve_horizons(sbdb_id, obs_time_str=obs_time_str)
+                    _save_jpl_cache_entry("asteroids", asteroid_name, sbdb_id)
+                    details = calculate_planning_info(sky_coord, location, start_time)
+                    moon_sep = moon_sep_deg(sky_coord, moon_loc_inner) if moon_loc_inner else 0.0
+                    row = {
+                        "Name": asteroid_name,
+                        "RA": sky_coord.ra.to_string(unit=u.hour, sep=('h ', 'm ', 's'), precision=0, pad=True),
+                        "Dec": sky_coord.dec.to_string(sep=('° ', "' ", '"'), precision=0, alwayssign=True, pad=True),
+                        "_dec_deg": sky_coord.dec.degree,
+                        "Moon Sep (°)": round(moon_sep, 1),
+                        "Moon Status": get_moon_status(moon_illum_inner, moon_sep) if moon_loc_inner else "",
+                    }
+                    row.update(details)
+                    return row
+                except Exception:
+                    pass
+            # All resolution attempts failed — return stub row (never None)
+            return {
+                "Name": asteroid_name,
+                "RA": "—", "Dec": "—", "_dec_deg": 0.0,
+                "Rise": "—", "Transit": "—", "Set": "—",
+                "Status": "—", "Constellation": "—",
+                "_rise_datetime": pd.NaT, "_set_datetime": pd.NaT, "_transit_datetime": pd.NaT,
+                "Moon Sep (°)": "—", "Moon Status": "—",
+                "_resolve_error": True,
+                "_jpl_id_tried": jpl_id,
+                "_jpl_error": str(first_exc)[:200],
+            }
 
-    with ThreadPoolExecutor(max_workers=min(len(asteroid_tuple), 8)) as executor:
-        results = list(executor.map(_fetch, asteroid_tuple))
-    return pd.DataFrame([r for r in results if r is not None])
+    deduped_asteroids = _dedup_by_jpl_id(list(asteroid_tuple), _asteroid_jpl_id)
+    with ThreadPoolExecutor(max_workers=min(len(deduped_asteroids), 8)) as executor:
+        results = list(executor.map(_fetch, deduped_asteroids))
+    return pd.DataFrame(results)   # every entry is a row — no filter(None)
 
 
 @st.cache_data(ttl=86400, show_spinner=False)
