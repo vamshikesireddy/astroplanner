@@ -4,6 +4,91 @@ Bug fixes, discoveries, and notable changes. See CLAUDE.md for architecture and 
 
 ---
 
+## 2026-03-01 — Night Plan altitude-aware filter, Peak Alt column, and Parameters summary
+
+**Commits:** `f2a07dc` → `3ae5129` (9 commits)
+**Tests:** 66 pass (3 new in `tests/test_core.py`)
+
+### Problem solved
+
+Night Plan Builder included objects that were below `min_alt` during the actual session window. The observability check ran at sidebar `start_time` (e.g. 15:00 when an object is near transit) — so an object with altitude 30° passed the `min_alt=20°` check and entered `df_obs`. The window filter then only checked horizon-crossing times (`_rise < win_end` AND `_set > win_start`), not actual altitude during the window.
+
+**Example:** 99942 Apophis transits at ~15:00 (alt 30°), passes `min_alt=20°`, enters `df_obs`. Session window 20:00→01:00. At 20:00 it is already at 14° and declining — never reaches 20° during the window. Was incorrectly included in the Night Plan.
+
+### What changed
+
+**A. `compute_peak_alt_in_window()` — new function in `backend/core.py`**
+- Samples altitude at ~30-min intervals across the session window using Astropy AltAz
+- Returns peak altitude in degrees (can be negative if object is always below horizon)
+- `n_steps` auto-computed from window duration (one per 30 min, min 2); override-able for tests
+- Used by `_apply_night_plan_filters()` to decide whether to include each target
+
+**B. `_ra_deg` added to all 5 section summary DataFrames**
+- `get_comet_summary`, `get_asteroid_summary`, `get_dso_summary`, planet inline loop, cosmic inline loop
+- Stored as numeric degrees — same pattern as existing `_dec_deg`; hidden column (not shown in table)
+- Enables `compute_peak_alt_in_window()` to reconstruct `SkyCoord` without re-parsing formatted RA strings
+- Stub/failure rows include `_ra_deg: 0.0` (same convention as `_dec_deg: 0.0`)
+
+**C. Altitude-aware window filter in `_apply_night_plan_filters()`**
+- New params: `location=None, min_alt=0`
+- Replaced `df.apply(_in_obs_window, axis=1)` closure with explicit `iterrows()` loop building `_keep` mask and `_peak_alt_window` list simultaneously (allows per-row mutation)
+- Logic: horizon overlap check first (cheap) → altitude sampling only if horizon overlap passes
+- "Always Up" objects get `_peak_alt_window=90.0` and always pass
+- Objects with missing rise/set times fall back to "keep" (safe default)
+- Objects missing `_ra_deg`/`_dec_deg`, or when `location=None`, fall back to horizon-only check
+
+**D. `Peak Alt (°)` column in Night Plan table (on-screen only)**
+- `_peak_alt_window` renamed to `Peak Alt (°)` after `_scheduled` is built
+- Formatted with `st.column_config.NumberColumn(format="%.0f°")`
+- Stripped from CSV export (`.drop(columns=['Peak Alt (°)'], errors='ignore')`)
+- Not included in PDF export (hidden `_` prefix columns already stripped)
+
+**E. Parameters summary block in `_render_night_plan_builder()`**
+- New params: `min_moon_sep=0, az_dirs=None` (in addition to `location`, `min_alt`)
+- `st.info()` line rendered immediately above the Build Plan / CSV button row
+- Always shows: session window range + duration, Min alt, Moon sep ≥ N°
+- Conditionally shows: Az directions (only when fewer than all 8 selected), Priority selection (only when active), Moon Status filter (only when not all statuses selected)
+- All 6 call sites updated to pass `location`, `min_alt`, `min_moon_sep`, `az_dirs`
+
+### UI improvements
+
+- All 6 Night Plan Builder `st.expander()` calls changed to `expanded=True` (open by default)
+- `st.markdown("---")` separator added before Night Plan Builder in Comet, Asteroid, Planet, Cosmic, and Manual sections (DSO already had one)
+- Trajectory picker: `st.caption()` added immediately after subheader in all 6 sections, listing all active sidebar filters (altitude, azimuth, moon separation, duration) so users understand what drives results
+- Duplicate trajectory caption removed from `st.header("3. Trajectory Results")`
+- Section numbering unified across all sections: **1. Choose Target** → **2. Select X for Trajectory** → **3. Trajectory Results** (consistent 3-step flow)
+
+### Bug fixed: asteroid priority false-positive (ADDED + REMOVED for same object)
+
+**Symptom:** `2001 FD58` appeared in both ADDED and REMOVED alerts simultaneously.
+
+**Root cause:** Scraped name `2001 FD58` (bare provisional) did not match YAML name `162882 (2001 FD58)` (numbered form with provisional in parens). Exact uppercase comparison: scraped name absent from YAML → ADDED alert. YAML name absent from scraped set → REMOVED alert. Both fired for the same physical object.
+
+**Fix:** `_build_priority_provisionals(priority_set)` helper extracts the provisional designation from parentheses in YAML names, building a reverse lookup `{"2001 FD58": "162882 (2001 FD58)"}`. ADDED check skips a scraped name if its provisional form resolves to a YAML entry. REMOVED check uses a `scraped_via_provisional` set so the numbered YAML name is not flagged as removed when matched via provisional.
+
+**Rule:** When comparing scraped names to YAML names for priority diff, always check both exact match and provisional-within-parentheses match. SBDB can return bare provisionals `"2001 FD58"` while YAML stores numbered forms `"162882 (2001 FD58)"`.
+
+### Bugs fixed (during testing)
+
+**Bug: `st.session_state.az_N` modified after widget instantiated (StreamlitAPIException)**
+- "Clear All" az directions button set `st.session_state[f"az_{d}"] = False` after checkboxes were already rendered in the same render cycle.
+- Fix: moved state mutation into an `on_click=_clear_az_dirs` callback so state is set before the next render cycle.
+- Rule: never set session state keys that correspond to already-rendered widgets from outside an `on_click`/`on_change` callback.
+
+**Bug: `ImportError: cannot import name 'compute_peak_alt_in_window' from 'backend.core'`**
+- Stale Streamlit server process (PID 15052) was running old code from before the `compute_peak_alt_in_window` function was added.
+- Fix: killed stale process, restarted. No code change needed.
+
+### Tests added (`tests/test_core.py`)
+- `test_compute_peak_alt_in_window_below_horizon` — object always below horizon returns negative peak
+- `test_compute_peak_alt_in_window_high_object` — Polaris at 50°N returns peak > 40°
+- `test_compute_peak_alt_in_window_n_steps_minimum` — `n_steps=1` samples only the window start
+
+### Files modified
+`backend/core.py` (new function `compute_peak_alt_in_window`), `app.py` (`_ra_deg` in 9 places, `_apply_night_plan_filters` altitude logic, `_render_night_plan_builder` parameters summary, Peak Alt column display and CSV strip, `_build_priority_provisionals` helper, all 6 call sites, UI improvements), `tests/test_core.py` (3 new tests), `CHANGELOG.md`, `README.md`.
+
+---
+
 ## 2026-03-01 — Pre-computed ephemeris cache: zero live JPL calls at render time
 
 **Branch:** `feature/ephemeris-cache` — 9 commits + 2 post-merge hotfixes, merged to main
