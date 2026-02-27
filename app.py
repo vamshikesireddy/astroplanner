@@ -1577,7 +1577,8 @@ def _init_session_state(now):
     if "selected_date" not in ss:
         ss["selected_date"] = now.date()
     if "selected_time" not in ss:
-        if now.hour >= CONFIG["default_session_hour"]:
+        if now.hour >= CONFIG["default_session_hour"] or now.hour < 6:
+            # In the active observation window (6PM–6AM) → use current time
             ss["selected_time"] = now.time()
         else:
             ss["selected_time"] = now.replace(
@@ -1717,7 +1718,7 @@ if st.session_state.last_timezone != timezone_str:
     st.session_state.last_timezone = timezone_str
     now_local = datetime.now(local_tz)
     st.session_state.selected_date = now_local.date()
-    if now_local.hour >= CONFIG["default_session_hour"]:
+    if now_local.hour >= CONFIG["default_session_hour"] or now_local.hour < 6:
         st.session_state.selected_time = now_local.time()
     else:
         st.session_state.selected_time = now_local.replace(hour=CONFIG["default_session_hour"], minute=0, second=0, microsecond=0).time()
