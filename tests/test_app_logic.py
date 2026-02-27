@@ -192,3 +192,102 @@ def test_add_peak_alt_session_missing_coord_cols_returns_none_column():
     result = _add_peak_alt_session(df, location=None, win_start_tz=None, win_end_tz=None)
     assert "_peak_alt_session" in result.columns
     assert result["_peak_alt_session"].isna().all()
+
+
+# ── _apply_night_plan_filters tests ───────────────────────────────────────────
+
+import pytz
+from datetime import datetime, timedelta
+import pandas as pd
+from backend.app_logic import _apply_night_plan_filters
+
+
+def _base_obs_df():
+    tz = pytz.utc
+    t_rise = datetime(2025, 6, 15, 20, 0, tzinfo=tz)
+    t_set  = datetime(2025, 6, 16,  4, 0, tzinfo=tz)
+    t_tra  = datetime(2025, 6, 16,  0, 0, tzinfo=tz)
+    return pd.DataFrame({
+        "Name": ["A", "B", "C"],
+        "Status": ["Visible", "Visible", "Visible"],
+        "Priority": ["URGENT", "LOW", "HIGH"],
+        "Moon Status": ["✅ Safe", "⚠️ Caution", "✅ Safe"],
+        "_rise_datetime":    [t_rise, t_rise, t_rise],
+        "_set_datetime":     [t_set,  t_set,  t_set],
+        "_transit_datetime": [t_tra,  t_tra,  t_tra],
+        "_ra_deg":  [100.0, 150.0, 200.0],
+        "_dec_deg": [ 30.0,  30.0,  30.0],
+    })
+
+
+def _win(hour_start=22, hour_end=2):
+    tz = pytz.utc
+    s = datetime(2025, 6, 15, hour_start, 0, tzinfo=tz)
+    e = datetime(2025, 6, 16, hour_end,   0, tzinfo=tz)
+    return s, e
+
+
+def test_apply_filters_priority_keeps_only_urgent():
+    df = _base_obs_df()
+    win_s, win_e = _win()
+    result = _apply_night_plan_filters(
+        df, pri_col="Priority", sel_pri=["URGENT"],
+        vmag_col=None, vmag_range=None,
+        type_col=None, sel_types=None,
+        disc_col=None, disc_days=None,
+        win_start_dt=win_s, win_end_dt=win_e,
+        sel_moon=None, all_moon_statuses=["✅ Safe", "⚠️ Caution"],
+    )
+    assert list(result["Name"]) == ["A"]
+
+def test_apply_filters_moon_status_excludes_caution():
+    df = _base_obs_df()
+    win_s, win_e = _win()
+    all_statuses = ["✅ Safe", "⚠️ Caution"]
+    result = _apply_night_plan_filters(
+        df, pri_col=None, sel_pri=None,
+        vmag_col=None, vmag_range=None,
+        type_col=None, sel_types=None,
+        disc_col=None, disc_days=None,
+        win_start_dt=win_s, win_end_dt=win_e,
+        sel_moon=["✅ Safe"], all_moon_statuses=all_statuses,
+    )
+    assert "B" not in result["Name"].tolist()
+
+def test_apply_filters_window_excludes_target_after_window():
+    tz = pytz.utc
+    late_rise = datetime(2025, 6, 16, 5, 0, tzinfo=tz)
+    late_set  = datetime(2025, 6, 16, 8, 0, tzinfo=tz)
+    df = pd.DataFrame({
+        "Name": ["Late"],
+        "Status": ["Visible"],
+        "_rise_datetime":    [late_rise],
+        "_set_datetime":     [late_set],
+        "_transit_datetime": [late_rise],
+        "_ra_deg": [100.0], "_dec_deg": [30.0],
+    })
+    win_s, win_e = _win()
+    result = _apply_night_plan_filters(
+        df, None, None, None, None, None, None, None, None,
+        win_start_dt=win_s, win_end_dt=win_e,
+        sel_moon=None, all_moon_statuses=[],
+    )
+    assert result.empty
+
+def test_apply_filters_always_up_passes_window():
+    tz = pytz.utc
+    df = pd.DataFrame({
+        "Name": ["Polaris"],
+        "Status": ["Always Up (Circumpolar)"],
+        "_rise_datetime":    [None],
+        "_set_datetime":     [None],
+        "_transit_datetime": [None],
+        "_ra_deg": [37.95], "_dec_deg": [89.26],
+    })
+    win_s, win_e = _win()
+    result = _apply_night_plan_filters(
+        df, None, None, None, None, None, None, None, None,
+        win_start_dt=win_s, win_end_dt=win_e,
+        sel_moon=None, all_moon_statuses=[],
+    )
+    assert len(result) == 1
