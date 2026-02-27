@@ -64,6 +64,7 @@ CONFIG = {
 
 from backend.app_logic import (
     _AZ_OCTANTS, _AZ_LABELS, _AZ_CAPTIONS, az_in_selected,
+    get_moon_status,
 )
 
 
@@ -108,16 +109,6 @@ def _check_row_observability(sc, row_status, location, check_times, moon_loc, mo
 
 
 st.set_page_config(page_title="AstroPlanner", page_icon="🔭", layout="wide", initial_sidebar_state="expanded")
-
-def get_moon_status(illumination, separation):
-    if illumination < CONFIG["moon_dark_sky_illum"]:
-        return "🌑 Dark Sky"
-    elif separation < CONFIG["moon_avoid_sep"]:
-        return "⛔ Avoid"
-    elif separation < CONFIG["moon_caution_sep"]:
-        return "⚠️ Caution"
-    else:
-        return "✅ Safe"
 
 @st.cache_data(ttl=3600, show_spinner="Calculating planetary visibility...")
 def get_planet_summary(lat, lon, start_time):

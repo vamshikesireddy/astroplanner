@@ -33,3 +33,26 @@ def test_az_labels_order():
 def test_az_octants_all_dirs_present():
     for d in _AZ_LABELS:
         assert d in _AZ_OCTANTS
+
+
+from backend.app_logic import get_moon_status
+
+def test_get_moon_status_dark_sky():
+    assert get_moon_status(5, 90) == "🌑 Dark Sky"   # illumination < 15
+
+def test_get_moon_status_avoid():
+    assert get_moon_status(50, 20) == "⛔ Avoid"      # illum >= 15, sep < 30
+
+def test_get_moon_status_caution():
+    assert get_moon_status(50, 45) == "⚠️ Caution"   # sep 30–60
+
+def test_get_moon_status_safe():
+    assert get_moon_status(50, 90) == "✅ Safe"       # sep > 60
+
+def test_get_moon_status_boundary_illum():
+    # At exactly illum=15, dark-sky threshold is NOT met
+    assert get_moon_status(15, 90) == "✅ Safe"
+
+def test_get_moon_status_boundary_sep():
+    assert get_moon_status(50, 30) == "⚠️ Caution"   # sep == 30 → Caution (not Avoid)
+    assert get_moon_status(50, 60) == "✅ Safe"        # sep == 60 → Safe (not Caution)

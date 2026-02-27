@@ -36,3 +36,22 @@ def az_in_selected(az_deg: float, selected_dirs: set) -> bool:
             if lo <= az_deg < hi:
                 return True
     return False
+
+
+# ── Moon status ────────────────────────────────────────────────────────────
+
+_MOON_DARK_SKY_ILLUM = 15   # illumination % below which it's "Dark Sky"
+_MOON_AVOID_SEP      = 30   # separation ° below which it's "Avoid"
+_MOON_CAUTION_SEP    = 60   # separation ° below which it's "Caution"
+
+
+def get_moon_status(illumination: float, separation: float) -> str:
+    """Return moon status emoji string for a given illumination % and separation °."""
+    if illumination < _MOON_DARK_SKY_ILLUM:
+        return "🌑 Dark Sky"
+    elif separation < _MOON_AVOID_SEP:
+        return "⛔ Avoid"
+    elif separation < _MOON_CAUTION_SEP:
+        return "⚠️ Caution"
+    else:
+        return "✅ Safe"
