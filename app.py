@@ -3607,10 +3607,11 @@ def render_cosmic_section(location, start_time, duration, min_alt, max_alt, az_d
             cols_to_remove_keywords = ['exposure', 'cadence', 'gain', 'exp', 'cad']
             actual_cols_to_drop = [
                 col for col in df_display.columns
-                if any(keyword in col.lower() for keyword in cols_to_remove_keywords) or col in ['is_observable', 'filter_reason']
+                if any(keyword in col.lower() for keyword in cols_to_remove_keywords)
+                or col in ['is_observable', 'filter_reason', 'Dec']  # drop DMS Dec; _dec_deg shows as "Dec" via column_config
             ]
-            # Also drop hidden columns used for plotting
-            hidden_cols = [c for c in df_display.columns if c.startswith('_')]
+            # Drop hidden columns except _dec_deg, which is displayed as numeric "Dec" for correct sorting
+            hidden_cols = [c for c in df_display.columns if c.startswith('_') and c != '_dec_deg']
 
             # Helper to style and display
             def display_styled_table(df_in):
