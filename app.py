@@ -1239,11 +1239,11 @@ def get_comet_summary(lat, lon, start_time, comet_tuple):
     def _fetch(comet_name):
         import time as _time
         from backend.sbdb import sbdb_lookup
-        from scripts.update_ephemeris_cache import _lookup_cached_position
+        from backend.config import lookup_cached_position
 
         # ── Fast path: use pre-computed ephemeris if available ──
         target_date = start_time.date().isoformat()   # e.g. "2026-03-05"
-        cached_pos = _lookup_cached_position(_ephem, "comets", comet_name, target_date)
+        cached_pos = lookup_cached_position(_ephem, "comets", comet_name, target_date)
         if cached_pos is not None:
             ra_deg, dec_deg = cached_pos
             sky_coord = SkyCoord(ra=ra_deg * u.deg, dec=dec_deg * u.deg, frame='icrs')
@@ -1438,11 +1438,11 @@ def get_asteroid_summary(lat, lon, start_time, asteroid_tuple):
     def _fetch(asteroid_name):
         import time as _time
         from backend.sbdb import sbdb_lookup
-        from scripts.update_ephemeris_cache import _lookup_cached_position
+        from backend.config import lookup_cached_position
 
         # ── Fast path: use pre-computed ephemeris if available ──
         target_date = start_time.date().isoformat()
-        cached_pos = _lookup_cached_position(_ephem, "asteroids", asteroid_name, target_date)
+        cached_pos = lookup_cached_position(_ephem, "asteroids", asteroid_name, target_date)
         if cached_pos is not None:
             ra_deg, dec_deg = cached_pos
             sky_coord = SkyCoord(ra=ra_deg * u.deg, dec=dec_deg * u.deg, frame='icrs')

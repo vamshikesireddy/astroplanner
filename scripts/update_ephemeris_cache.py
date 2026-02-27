@@ -76,7 +76,7 @@ def _lookup_cached_position(cache, section, name, target_date_str):
 
 
 def _validate_name(stored_name, section):
-    """Query SBDB for current canonical fullname. Returns string or None."""
+    """Query SBDB for current canonical fullname. Returns changed canonical or None."""
     import requests
     query = _strip_comet_id(stored_name) if section == 'comets' else _strip_asteroid_id(stored_name)
     try:
@@ -86,7 +86,16 @@ def _validate_name(stored_name, section):
             timeout=10,
         )
         if resp.status_code == 200:
-            return resp.json().get('object', {}).get('fullname')
+            canonical = resp.json().get('object', {}).get('fullname')
+            if canonical:
+                # SBDB appends provisional designation in parens: '433 Eros (A898 PA)'
+                # Strip it before comparing so we only flag genuine renames.
+                # Also strip parens from stored_name (comet discoverer names like
+                # 'C/2024 G3 (ATLAS)' are stored with parens in YAML but SBDB
+                # returns them without — these are not renames).
+                canonical_base = canonical.split('(')[0].strip()
+                stored_base = stored_name.split('(')[0].strip()
+                return canonical_base if canonical_base != stored_base else None
     except Exception:
         pass
     return None

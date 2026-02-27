@@ -59,7 +59,7 @@ def test_extract_positions_returns_list():
 # --- _lookup_cached_position ---
 
 def test_lookup_cached_position_hit():
-    from scripts.update_ephemeris_cache import _lookup_cached_position
+    from backend.config import lookup_cached_position as _lookup_cached_position
     cache = {
         "comets": {
             "C/2024 G3 (ATLAS)": {
@@ -71,10 +71,24 @@ def test_lookup_cached_position_hit():
     assert result == (99.9, 10.1)
 
 def test_lookup_cached_position_miss():
-    from scripts.update_ephemeris_cache import _lookup_cached_position
+    from backend.config import lookup_cached_position as _lookup_cached_position
     assert _lookup_cached_position({}, "comets", "X", "2026-03-05") is None
 
 def test_lookup_cached_position_wrong_date():
-    from scripts.update_ephemeris_cache import _lookup_cached_position
+    from backend.config import lookup_cached_position as _lookup_cached_position
     cache = {"comets": {"X": {"positions": [{"date": "2026-03-01", "ra": 1.0, "dec": 2.0}]}}}
     assert _lookup_cached_position(cache, "comets", "X", "2026-04-15") is None
+
+
+# --- _build_epochs ---
+
+def test_build_epochs_date_format():
+    from scripts.update_ephemeris_cache import _build_epochs
+    from datetime import datetime, timezone
+    start, epochs = _build_epochs(days=30)
+    today = datetime.now(timezone.utc).date().isoformat()
+    assert start == today
+    assert epochs['start'] == today
+    assert len(epochs['stop']) == 10   # YYYY-MM-DD
+    assert epochs['stop'] > today
+    assert epochs['step'] == '1d'

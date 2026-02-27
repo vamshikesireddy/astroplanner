@@ -1,5 +1,5 @@
 {
-  "generated_utc": "2026-02-27T15:27:59",
+  "generated_utc": "2026-02-27T15:40:11",
   "horizon_days": 30,
   "comets": {
     "24P/Schaumasse": {
@@ -6531,89 +6531,14 @@
       "canonical": "240P/NEAT-B"
     },
     {
-      "section": "comets",
-      "stored": "C/2025 F2",
-      "canonical": "C/2025 F2 (SWAN)"
-    },
-    {
-      "section": "asteroids",
-      "stored": "1 Ceres",
-      "canonical": "1 Ceres (A801 AA)"
-    },
-    {
-      "section": "asteroids",
-      "stored": "2 Pallas",
-      "canonical": "2 Pallas (A802 FA)"
-    },
-    {
-      "section": "asteroids",
-      "stored": "3 Juno",
-      "canonical": "3 Juno (A804 RA)"
-    },
-    {
-      "section": "asteroids",
-      "stored": "4 Vesta",
-      "canonical": "4 Vesta (A807 FA)"
-    },
-    {
-      "section": "asteroids",
-      "stored": "10 Hygiea",
-      "canonical": "10 Hygiea (A849 GA)"
-    },
-    {
-      "section": "asteroids",
-      "stored": "16 Psyche",
-      "canonical": "16 Psyche (A852 FA)"
-    },
-    {
-      "section": "asteroids",
-      "stored": "433 Eros",
-      "canonical": "433 Eros (A898 PA)"
-    },
-    {
-      "section": "asteroids",
-      "stored": "704 Interamnia",
-      "canonical": "704 Interamnia (A910 TC)"
-    },
-    {
-      "section": "asteroids",
-      "stored": "1796 Riga",
-      "canonical": "1796 Riga (1966 KB)"
-    },
-    {
-      "section": "asteroids",
-      "stored": "2033 Basilea",
-      "canonical": "2033 Basilea (1973 CA)"
-    },
-    {
       "section": "asteroids",
       "stored": "2001 FD58",
-      "canonical": "162882 (2001 FD58)"
-    },
-    {
-      "section": "asteroids",
-      "stored": "3200 Phaethon",
-      "canonical": "3200 Phaethon (1983 TB)"
-    },
-    {
-      "section": "asteroids",
-      "stored": "3260 Vizbor",
-      "canonical": "3260 Vizbor (1974 SO2)"
-    },
-    {
-      "section": "asteroids",
-      "stored": "99942 Apophis",
-      "canonical": "99942 Apophis (2004 MN4)"
-    },
-    {
-      "section": "asteroids",
-      "stored": "101955 Bennu",
-      "canonical": "101955 Bennu (1999 RQ36)"
+      "canonical": "162882"
     },
     {
       "section": "asteroids",
       "stored": "2001 SN263",
-      "canonical": "153591 (2001 SN263)"
+      "canonical": "153591"
     }
   ],
   "failures": []
