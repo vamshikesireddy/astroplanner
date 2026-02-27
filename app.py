@@ -868,20 +868,32 @@ def _render_night_plan_builder(
         )
 
     # Row 2b: unified night session window slider
-    # Clamp the default start to the valid night range.
     _st_naive = start_time.replace(tzinfo=None)
-    _slider_default_start = min(
-        max(_st_naive, night_plan_start),
-        night_plan_end - timedelta(minutes=30),
+    # Round sidebar start down to nearest 30 min for slider alignment.
+    _st_rounded = _st_naive.replace(
+        minute=(_st_naive.minute // 30) * 30, second=0, microsecond=0
     )
+    # Slider min: earlier of sidebar time or 18:00 night start, so pre-18:00
+    # sidebar times (e.g. 14:30) aren't silently clamped to 18:00.
+    _slider_min = min(_st_rounded, night_plan_start)
+    _slider_default_start = min(_st_rounded, night_plan_end - timedelta(minutes=30))
+
+    # Sync slider to sidebar: when the sidebar time changes, reset the stored
+    # slider value so the left handle tracks the new start time.
+    _ss_key = f"{section_key}_win_range"
+    _last_key = f"{section_key}_last_start"
+    if st.session_state.get(_last_key) != _st_rounded:
+        st.session_state[_last_key] = _st_rounded
+        st.session_state[_ss_key] = (_slider_default_start, night_plan_end)
+
     _win_range = st.slider(
         "Session window",
-        min_value=night_plan_start,
+        min_value=_slider_min,
         max_value=night_plan_end,
         value=(_slider_default_start, night_plan_end),
         step=timedelta(minutes=30),
         format="MMM DD HH:mm",
-        key=f"{section_key}_win_range",
+        key=_ss_key,
         help="Drag the handles to set the start and end of your observing session.",
     )
     _win_start_dt = local_tz.localize(_win_range[0])
