@@ -66,10 +66,10 @@ Each section's Observable tab has a **📅 Night Plan Builder** open by default:
 *   The **Peak Alt (°)** column shows how high each object peaks during your window.
 *   Export the final plan as **CSV** or **PDF**.
 
-### 5. Calculate a Trajectory
-*   In the **2. Select X for Trajectory** picker, choose any target from the section.
+### 5. Explore a Trajectory
+*   In the **3. Select X for Trajectory** picker, choose any target from the section.
 *   Click **🚀 Calculate Visibility** (or **🚀 Calculate Trajectory**).
-*   View the **Altitude Chart** (step 3) to see if the object is high enough during your session.
+*   View the **Altitude Chart** (step 4) to see if the object is high enough during your session.
 *   **Download CSV** for detailed 10-minute-step data including Moon Sep at each step.
 
 ## Project Structure
