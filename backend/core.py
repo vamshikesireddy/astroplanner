@@ -183,7 +183,9 @@ def compute_peak_alt_in_window(ra_deg, dec_deg, location, win_start_dt, win_end_
     win_start_dt, win_end_dt : datetime (tz-aware)
         Start and end of the observation window.
     n_steps : int | None
-        Number of altitude samples. Auto-computed from window duration if None.
+        Number of altitude samples. Auto-computed from window duration if None
+        (one per 30 min, minimum 2). Passing n_steps=1 explicitly samples only
+        the window start.
 
     Returns
     -------

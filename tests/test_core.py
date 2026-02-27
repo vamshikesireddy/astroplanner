@@ -97,21 +97,23 @@ def test_calculate_planning_info_set_after_rise():
 
 # ── compute_peak_alt_in_window ────────────────────────────────────────────────
 
-def test_compute_peak_alt_in_window_returns_valid_range():
-    """Peak altitude is always a float in [-90, 90]."""
+def test_compute_peak_alt_in_window_below_horizon():
+    """Object that never rises from the observer's location returns negative peak altitude."""
     from datetime import datetime
     import pytz
     from astropy.coordinates import EarthLocation
     import astropy.units as u
     from backend.core import compute_peak_alt_in_window
 
+    # Deep southern object (Dec=-70) never rises from New York (lat=40.7N)
     loc = EarthLocation(lat=40.7 * u.deg, lon=-74.0 * u.deg)
     tz  = pytz.timezone('America/New_York')
     win_start = tz.localize(datetime(2026, 7, 1, 21, 0))
     win_end   = tz.localize(datetime(2026, 7, 1, 23, 0))
-    peak = compute_peak_alt_in_window(279.23, 38.78, loc, win_start, win_end)
+    # RA=0, Dec=-70 — circumpolar below horizon from lat 40.7N
+    peak = compute_peak_alt_in_window(0.0, -70.0, loc, win_start, win_end)
     assert isinstance(peak, float)
-    assert -90.0 <= peak <= 90.0
+    assert peak < 0.0, f"Southern object should be below horizon from 40.7N, got {peak:.1f}°"
 
 
 def test_compute_peak_alt_in_window_high_object():
