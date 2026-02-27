@@ -1,0 +1,46 @@
+name: Update Ephemeris Cache
+
+on:
+  schedule:
+    - cron: '0 7 * * *'   # Daily at 07:00 UTC (1h after jpl-cache job at 06:00)
+  workflow_dispatch:        # Manual trigger from GitHub Actions tab
+
+jobs:
+  update-ephemeris:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write       # needed to commit ephemeris_cache.json
+      issues: write         # needed to create GitHub Issues
+
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: pip install astroquery astropy requests pyyaml
+
+      - name: Run ephemeris update
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+        run: python scripts/update_ephemeris_cache.py
+        continue-on-error: true   # per-object failures logged, don't abort entire job
+
+      - name: Commit updated cache if changed
+        run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          if git diff --quiet ephemeris_cache.json 2>/dev/null; then
+            echo "No changes to ephemeris_cache.json"
+          else
+            git add ephemeris_cache.json
+            git commit -m "chore: update ephemeris_cache.json [skip ci]"
+            git push
+          fi
