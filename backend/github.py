@@ -7,7 +7,7 @@ except ImportError:
     Github = None  # PyGithub optional
 
 
-def create_issue(token, repo_name, title, body):
+def create_issue(token, repo_name, title, body, labels=None):
     """Create a GitHub Issue.
 
     Args:
@@ -15,6 +15,7 @@ def create_issue(token, repo_name, title, body):
         repo_name: Full repo name e.g. "owner/repo".
         title:     Issue title.
         body:      Issue body (markdown).
+        labels:    Optional list of label name strings (must already exist in repo).
 
     Does nothing if token/repo_name/Github are falsy.
     Raises RuntimeError if the API call fails.
@@ -24,4 +25,7 @@ def create_issue(token, repo_name, title, body):
     g = Github(token)
     repo = g.get_repo(repo_name)
     me = g.get_user()
-    repo.create_issue(title=title, body=body, assignee=me.login)
+    create_kwargs = {"title": title, "body": body, "assignee": me.login}
+    if labels:
+        create_kwargs["labels"] = labels
+    repo.create_issue(**create_kwargs)

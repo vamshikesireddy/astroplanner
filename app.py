@@ -456,6 +456,22 @@ def _send_github_notification(title, body):
         print(f"Failed to send notification: {e}")
 
 
+def _notify_jpl_failure(name, jpl_id_tried, error_msg):
+    """Fire a GitHub Issue for a JPL resolution failure — once per session per name."""
+    notified = st.session_state.setdefault("_jpl_notified", set())
+    if name in notified:
+        return
+    notified.add(name)
+    title = f"⚠️ JPL resolution failed: {name}"
+    body = (
+        f"**Object:** `{name}`\n"
+        f"**JPL ID tried:** `{jpl_id_tried}`\n"
+        f"**Error:** {error_msg}\n\n"
+        f"Set a permanent fix in `jpl_id_overrides.yaml` or use the admin panel override.\n"
+    )
+    _send_github_notification(title, body)
+
+
 def _sanitize_csv_df(df: pd.DataFrame) -> pd.DataFrame:
     """Escape leading formula characters in string columns for safe CSV export."""
     _FORMULA_PREFIXES = ('=', '+', '-', '@')
@@ -1059,11 +1075,57 @@ COMET_ALIASES = {
     "3I/ATLAS": "C/2025 N1 (ATLAS)",
 }
 
-# SPK-ID overrides: comets that must be queried by their JPL SPK-ID (not designation)
-COMET_SPK_IDS = {
-    "240P": "90001202",    # 240P/NEAT Fragment A (primary body)
-    "240P-B": "90001203",  # 240P/NEAT Fragment B
-}
+JPL_OVERRIDES_FILE = "jpl_id_overrides.yaml"
+JPL_CACHE_FILE = "jpl_id_cache.json"
+
+
+@st.cache_data(ttl=3600, show_spinner=False)
+def _load_jpl_overrides():
+    """Load jpl_id_overrides.yaml (cached 1h). Call .clear() after admin saves an override."""
+    from backend.config import read_jpl_overrides
+    return read_jpl_overrides(JPL_OVERRIDES_FILE)
+
+
+def _load_jpl_cache():
+    """Load jpl_id_cache.json — NOT st.cache_data so it reflects live writes."""
+    from backend.config import read_jpl_cache
+    return read_jpl_cache(JPL_CACHE_FILE)
+
+
+def _save_jpl_cache_entry(section, name, jpl_id):
+    """Persist a newly SBDB-resolved JPL ID to jpl_id_cache.json.
+
+    Guards against SBDB internal-format SPK-IDs in [20M, 30M) which JPL
+    Horizons rejects.  SBDB returns 20000000 + catalog_number for numbered
+    bodies (e.g. 20000433 for Eros, 20015091 for 88P/Howell).  Caching
+    these causes every subsequent batch query to fail.
+
+    Valid ID ranges we keep:
+      - Numbered bodies:    < 10_000_000  (1, 433, 99942 …)
+      - Comet SPK-IDs:      ~1_003_000 – 1_004_999  (1003861, 1004111 …)
+      - Fragment IDs:       ~90_000_000+  (90001202, 90001203 …)
+    """
+    try:
+        _id_int = int(jpl_id)
+        if 20_000_000 <= _id_int < 30_000_000:
+            return  # SBDB internal ID — Horizons rejects these; skip caching
+    except (ValueError, TypeError):
+        pass  # non-numeric IDs (designations like "C/2025 F2", "3I") are fine
+    from backend.config import read_jpl_cache, write_jpl_cache
+    cache = read_jpl_cache(JPL_CACHE_FILE)
+    cache.setdefault(section, {})[name] = jpl_id
+    write_jpl_cache(JPL_CACHE_FILE, cache)
+
+
+def _dedup_by_jpl_id(names, id_fn):
+    """Return names list with duplicates removed by resolved JPL ID (first occurrence wins)."""
+    seen, out = set(), []
+    for name in names:
+        jid = id_fn(name)
+        if jid not in seen:
+            seen.add(jid)
+            out.append(name)
+    return out
 
 
 def _resolve_comet_alias(name):
@@ -1072,10 +1134,17 @@ def _resolve_comet_alias(name):
 
 
 def _get_comet_jpl_id(name):
-    """Return the correct JPL Horizons query ID for a comet name.
-    SPK-ID overrides take priority; otherwise strip parenthetical suffix."""
-    if name in COMET_SPK_IDS:
-        return COMET_SPK_IDS[name]
+    """Three-layer JPL ID lookup for comets.
+    1. jpl_id_overrides.yaml  (admin-committed permanent fixes, cached 1h)
+    2. jpl_id_cache.json      (SBDB auto-resolved at runtime)
+    3. Strip parenthetical    (e.g. 'C/2025 N1 (ATLAS)' → 'C/2025 N1')
+    """
+    overrides = _load_jpl_overrides()
+    if name in overrides.get("comets", {}):
+        return overrides["comets"][name]
+    cache = _load_jpl_cache()
+    if name in cache.get("comets", {}):
+        return cache["comets"][name]
     return name.split('(')[0].strip()
 
 
@@ -1130,10 +1199,28 @@ def get_comet_summary(lat, lon, start_time, comet_tuple):
     except Exception:
         moon_loc_inner = None
         moon_illum_inner = 0
+    # --- Thread-safe: load @st.cache_data maps BEFORE spawning workers ---
+    _overrides = _load_jpl_overrides()   # @st.cache_data — safe here (main thread)
+    _jpl_cache = _load_jpl_cache()       # plain file read, always safe
+
+    def _comet_id_local(name):
+        """Resolve comet display name → JPL ID using pre-loaded maps (no Streamlit cache calls)."""
+        if name in _overrides.get("comets", {}):
+            return _overrides["comets"][name]
+        if name in _jpl_cache.get("comets", {}):
+            return _jpl_cache["comets"][name]
+        return name.split('(')[0].strip()
+
     def _fetch(comet_name):
-        jpl_id = _get_comet_jpl_id(comet_name)
+        import time as _time
+        from backend.sbdb import sbdb_lookup  # import here, not inside except block
+        jpl_id = _comet_id_local(comet_name)
         try:
-            _, sky_coord = resolve_horizons(jpl_id, obs_time_str=obs_time_str)
+            try:
+                _, sky_coord = resolve_horizons(jpl_id, obs_time_str=obs_time_str)
+            except Exception:
+                _time.sleep(1.5)  # one retry after backoff — JPL rate-limits parallel requests
+                _, sky_coord = resolve_horizons(jpl_id, obs_time_str=obs_time_str)
             details = calculate_planning_info(sky_coord, location, start_time)
             moon_sep = moon_sep_deg(sky_coord, moon_loc_inner) if moon_loc_inner else 0.0
             row = {
@@ -1143,15 +1230,55 @@ def get_comet_summary(lat, lon, start_time, comet_tuple):
                 "_dec_deg": sky_coord.dec.degree,
                 "Moon Sep (°)": round(moon_sep, 1),
                 "Moon Status": get_moon_status(moon_illum_inner, moon_sep) if moon_loc_inner else "",
+                "_jpl_id_used": jpl_id,
             }
             row.update(details)
             return row
-        except Exception:
-            return None
+        except Exception as first_exc:
+            # Try full display name first, then stripped jpl_id (catches cases where
+            # display name has parenthetical that SBDB can't handle but stripped form can)
+            sbdb_id = sbdb_lookup(comet_name)
+            if sbdb_id is None and jpl_id != comet_name:
+                sbdb_id = sbdb_lookup(jpl_id)
+            if sbdb_id and sbdb_id != jpl_id:
+                try:
+                    _, sky_coord = resolve_horizons(sbdb_id, obs_time_str=obs_time_str)
+                    _save_jpl_cache_entry("comets", comet_name, sbdb_id)
+                    details = calculate_planning_info(sky_coord, location, start_time)
+                    moon_sep = moon_sep_deg(sky_coord, moon_loc_inner) if moon_loc_inner else 0.0
+                    row = {
+                        "Name": comet_name,
+                        "RA": sky_coord.ra.to_string(unit=u.hour, sep=('h ', 'm ', 's'), precision=0, pad=True),
+                        "Dec": sky_coord.dec.to_string(sep=('° ', "' ", '"'), precision=0, alwayssign=True, pad=True),
+                        "_dec_deg": sky_coord.dec.degree,
+                        "Moon Sep (°)": round(moon_sep, 1),
+                        "Moon Status": get_moon_status(moon_illum_inner, moon_sep) if moon_loc_inner else "",
+                        "_jpl_id_used": sbdb_id,
+                    }
+                    row.update(details)
+                    return row
+                except Exception:
+                    pass
+            # All resolution attempts failed — return stub row (never None)
+            return {
+                "Name": comet_name,
+                "RA": "—", "Dec": "—", "_dec_deg": 0.0,
+                "Rise": "—", "Transit": "—", "Set": "—",
+                "Status": "—", "Constellation": "—",
+                "_rise_datetime": pd.NaT, "_set_datetime": pd.NaT, "_transit_datetime": pd.NaT,
+                "Moon Sep (°)": "—", "Moon Status": "—",
+                "_resolve_error": True,
+                "_jpl_id_tried": jpl_id,
+                "_jpl_id_used": jpl_id,
+                "_jpl_error": str(first_exc)[:200],
+            }
 
-    with ThreadPoolExecutor(max_workers=min(len(comet_tuple), 8)) as executor:
-        results = list(executor.map(_fetch, comet_tuple))
-    return pd.DataFrame([r for r in results if r is not None])
+    deduped_comets = _dedup_by_jpl_id(list(comet_tuple), _comet_id_local)
+    # Cap at 3 workers — JPL Horizons rate-limits aggressively under high concurrency;
+    # sequential tests always pass, 8 parallel workers caused ~50% failures.
+    with ThreadPoolExecutor(max_workers=max(1, min(len(deduped_comets), 3))) as executor:
+        results = list(executor.map(_fetch, deduped_comets))
+    return pd.DataFrame(results)   # every entry is a row — no filter(None)
 
 
 @st.cache_data(ttl=86400, show_spinner=False)
@@ -1182,15 +1309,22 @@ def _asteroid_priority_name(entry):
 
 
 def _asteroid_jpl_id(name):
-    """Return the correct JPL Horizons ID for an asteroid name.
-    - Provisional designations (e.g. '2001 FD58', '2024 YR4') → use full string.
-    - Numbered named asteroids (e.g. '433 Eros') → use just the number.
+    """Three-layer JPL ID lookup for asteroids.
+    1. jpl_id_overrides.yaml  (admin-committed permanent fixes, cached 1h)
+    2. jpl_id_cache.json      (SBDB auto-resolved at runtime)
+    3. Number-extraction logic (e.g. '433 Eros' → '433', '2001 FD58' stays as-is)
     """
+    overrides = _load_jpl_overrides()
+    if name in overrides.get("asteroids", {}):
+        return overrides["asteroids"][name]
+    cache = _load_jpl_cache()
+    if name in cache.get("asteroids", {}):
+        return cache["asteroids"][name]
     import re as _re
     if name and _re.match(r'^\d{4}\s+[A-Z]{1,2}\d', name):
-        return name  # Provisional: year + letter-number combo
+        return name  # Provisional: e.g. '2001 FD58', '2001 SN263'
     if name and name[0].isdigit():
-        return name.split(' ')[0]  # Numbered: "433 Eros" → "433"
+        return name.split(' ')[0]  # Numbered: '433 Eros' → '433'
     return name
 
 
@@ -1236,10 +1370,33 @@ def get_asteroid_summary(lat, lon, start_time, asteroid_tuple):
     except Exception:
         moon_loc_inner = None
         moon_illum_inner = 0
+    # --- Thread-safe: load @st.cache_data maps BEFORE spawning workers ---
+    _overrides = _load_jpl_overrides()   # @st.cache_data — safe here (main thread)
+    _jpl_cache = _load_jpl_cache()       # plain file read, always safe
+
+    def _asteroid_id_local(name):
+        """Resolve asteroid display name → JPL ID using pre-loaded maps (no Streamlit cache calls)."""
+        import re as _re
+        if name in _overrides.get("asteroids", {}):
+            return _overrides["asteroids"][name]
+        if name in _jpl_cache.get("asteroids", {}):
+            return _jpl_cache["asteroids"][name]
+        if name and _re.match(r'^\d{4}\s+[A-Z]{1,2}\d', name):
+            return name  # Provisional: e.g. '2001 FD58'
+        if name and name[0].isdigit():
+            return name.split(' ')[0]  # Numbered: '433 Eros' → '433'
+        return name
+
     def _fetch(asteroid_name):
-        jpl_id = _asteroid_jpl_id(asteroid_name)
+        import time as _time
+        from backend.sbdb import sbdb_lookup  # import here, not inside except block
+        jpl_id = _asteroid_id_local(asteroid_name)
         try:
-            _, sky_coord = resolve_horizons(jpl_id, obs_time_str=obs_time_str)
+            try:
+                _, sky_coord = resolve_horizons(jpl_id, obs_time_str=obs_time_str)
+            except Exception:
+                _time.sleep(1.5)  # one retry after backoff — JPL rate-limits parallel requests
+                _, sky_coord = resolve_horizons(jpl_id, obs_time_str=obs_time_str)
             details = calculate_planning_info(sky_coord, location, start_time)
             moon_sep = moon_sep_deg(sky_coord, moon_loc_inner) if moon_loc_inner else 0.0
             row = {
@@ -1249,15 +1406,51 @@ def get_asteroid_summary(lat, lon, start_time, asteroid_tuple):
                 "_dec_deg": sky_coord.dec.degree,
                 "Moon Sep (°)": round(moon_sep, 1),
                 "Moon Status": get_moon_status(moon_illum_inner, moon_sep) if moon_loc_inner else "",
+                "_jpl_id_used": jpl_id,
             }
             row.update(details)
             return row
-        except Exception:
-            return None
+        except Exception as first_exc:
+            sbdb_id = sbdb_lookup(asteroid_name)
+            if sbdb_id is None and jpl_id != asteroid_name:
+                sbdb_id = sbdb_lookup(jpl_id)
+            if sbdb_id and sbdb_id != jpl_id:
+                try:
+                    _, sky_coord = resolve_horizons(sbdb_id, obs_time_str=obs_time_str)
+                    _save_jpl_cache_entry("asteroids", asteroid_name, sbdb_id)
+                    details = calculate_planning_info(sky_coord, location, start_time)
+                    moon_sep = moon_sep_deg(sky_coord, moon_loc_inner) if moon_loc_inner else 0.0
+                    row = {
+                        "Name": asteroid_name,
+                        "RA": sky_coord.ra.to_string(unit=u.hour, sep=('h ', 'm ', 's'), precision=0, pad=True),
+                        "Dec": sky_coord.dec.to_string(sep=('° ', "' ", '"'), precision=0, alwayssign=True, pad=True),
+                        "_dec_deg": sky_coord.dec.degree,
+                        "Moon Sep (°)": round(moon_sep, 1),
+                        "Moon Status": get_moon_status(moon_illum_inner, moon_sep) if moon_loc_inner else "",
+                        "_jpl_id_used": sbdb_id,
+                    }
+                    row.update(details)
+                    return row
+                except Exception:
+                    pass
+            return {
+                "Name": asteroid_name,
+                "RA": "—", "Dec": "—", "_dec_deg": 0.0,
+                "Rise": "—", "Transit": "—", "Set": "—",
+                "Status": "—", "Constellation": "—",
+                "_rise_datetime": pd.NaT, "_set_datetime": pd.NaT, "_transit_datetime": pd.NaT,
+                "Moon Sep (°)": "—", "Moon Status": "—",
+                "_resolve_error": True,
+                "_jpl_id_tried": jpl_id,
+                "_jpl_id_used": jpl_id,
+                "_jpl_error": str(first_exc)[:200],
+            }
 
-    with ThreadPoolExecutor(max_workers=min(len(asteroid_tuple), 8)) as executor:
-        results = list(executor.map(_fetch, asteroid_tuple))
-    return pd.DataFrame([r for r in results if r is not None])
+    deduped_asteroids = _dedup_by_jpl_id(list(asteroid_tuple), _asteroid_id_local)
+    # Cap at 3 workers — JPL Horizons rate-limits aggressively under high concurrency.
+    with ThreadPoolExecutor(max_workers=max(1, min(len(deduped_asteroids), 3))) as executor:
+        results = list(executor.map(_fetch, deduped_asteroids))
+    return pd.DataFrame(results)   # every entry is a row — no filter(None)
 
 
 @st.cache_data(ttl=86400, show_spinner=False)
@@ -2333,11 +2526,62 @@ def render_comet_section(location, start_time, duration, min_alt, max_alt, az_di
                             else:
                                 st.warning(f"'{new_comet_direct}' is already in the list.")
 
+                    st.markdown("---")
+                    if st.button("🔄 Refresh JPL Data", key="jpl_refresh_comets",
+                                 help="Clears cached JPL results and reloads overrides — use after editing jpl_id_overrides.yaml or jpl_id_cache.json"):
+                        _load_jpl_overrides.clear()
+                        get_comet_summary.clear()
+                        get_asteroid_summary.clear()
+                        st.success("JPL cache cleared — reloading...")
+                        st.rerun()
+                    # JPL Resolution Failures
+                    _comet_failures_df = st.session_state.get("_comet_jpl_failures", None)
+                    if _comet_failures_df is not None and not _comet_failures_df.empty:
+                        st.markdown("### ⚠️ JPL Resolution Failures")
+                        st.caption(f"{len(_comet_failures_df)} comet(s) could not be resolved via JPL Horizons.")
+                        for _, _fail_row in _comet_failures_df.iterrows():
+                            _fname = _fail_row["Name"]
+                            _ftried = _fail_row.get("_jpl_id_tried", "?")
+                            _ferr = _fail_row.get("_jpl_error", "Unknown error")
+                            with st.container():
+                                st.markdown(f"**{_fname}** — tried `{_ftried}`")
+                                st.caption(str(_ferr))
+                                _ovr_id = st.text_input(
+                                    "Set JPL ID override",
+                                    key=f"jpl_comet_ovr_{_fname}",
+                                    placeholder="Enter JPL designation or SPK-ID",
+                                )
+                                if st.button("💾 Save Override", key=f"jpl_comet_btn_{_fname}"):
+                                    if _ovr_id.strip():
+                                        from backend.config import read_jpl_overrides, write_jpl_overrides
+                                        _ovr_data = read_jpl_overrides(JPL_OVERRIDES_FILE)
+                                        _ovr_data["comets"][_fname] = _ovr_id.strip()
+                                        write_jpl_overrides(JPL_OVERRIDES_FILE, _ovr_data)
+                                        _load_jpl_overrides.clear()
+                                        get_comet_summary.clear()
+                                        st.success(f"Override saved: **{_fname}** → `{_ovr_id.strip()}`")
+                                        st.rerun()
+                                    else:
+                                        st.warning("Enter a JPL ID before saving.")
+                                st.divider()
+                    elif _comet_failures_df is not None:
+                        st.success("✅ All comets resolved via JPL Horizons.")
+                    # else: _comet_failures_df is None → data not yet computed, show nothing
+
         # Batch visibility table
         if lat is None or lon is None or (lat == 0.0 and lon == 0.0):
             st.info("Set location in sidebar to see visibility summary for all comets.")
         elif active_comets:
             df_comets = get_comet_summary(lat, lon, start_time, tuple(active_comets))
+
+            # Store JPL failure rows in session state for admin panel + fire notifications
+            if not df_comets.empty and "_resolve_error" in df_comets.columns:
+                _cf = df_comets[df_comets["_resolve_error"] == True]
+                st.session_state["_comet_jpl_failures"] = _cf
+                for _, _fr in _cf.iterrows():
+                    _notify_jpl_failure(_fr["Name"], _fr.get("_jpl_id_tried", "?"), _fr.get("_jpl_error", ""))
+            else:
+                st.session_state["_comet_jpl_failures"] = pd.DataFrame()
 
             if not df_comets.empty:
                 # Priority column: admin override > unistellar priority > empty
@@ -2361,6 +2605,15 @@ def render_comet_section(location, start_time, duration, min_alt, max_alt, az_di
                 location_c = EarthLocation(lat=lat * u.deg, lon=lon * u.deg)
                 is_obs_list, reason_list, moon_sep_list, moon_status_list = [], [], [], []
                 for _, row in df_comets.iterrows():
+                    # Short-circuit: stub rows from failed JPL lookups
+                    # NOTE: use `is True` not truthy check — NaN is truthy and
+                    # would incorrectly flag successful rows that lack _resolve_error
+                    if row.get("_resolve_error") is True:
+                        is_obs_list.append(False)
+                        reason_list.append(f"JPL lookup failed (tried: {row.get('_jpl_id_tried', '?')})")
+                        moon_sep_list.append("—")
+                        moon_status_list.append("")
+                        continue
                     try:
                         sc = SkyCoord(row['RA'], row['Dec'], frame='icrs')
                         check_times = [
@@ -2489,6 +2742,8 @@ def render_comet_section(location, start_time, duration, min_alt, max_alt, az_di
                 with st.spinner(f"Querying JPL Horizons for {obj_name}..."):
                     utc_start = start_time.astimezone(pytz.utc)
                     name, sky_coord = resolve_horizons(obj_name, obs_time_str=utc_start.strftime('%Y-%m-%d %H:%M:%S'))
+                if selected_target != "Custom Comet...":
+                    name = selected_target  # show display name ("24P/Schaumasse"), not bare JPL ID
                 st.success(f"✅ Resolved: **{name}**")
                 resolved = True
             except Exception as e:
@@ -2973,11 +3228,62 @@ def render_asteroid_section(location, start_time, duration, min_alt, max_alt, az
                         else:
                             st.warning(f"'{new_asteroid_direct}' is already in the list.")
 
+                st.markdown("---")
+                if st.button("🔄 Refresh JPL Data", key="jpl_refresh_asteroids",
+                             help="Clears cached JPL results and reloads overrides — use after editing jpl_id_overrides.yaml or jpl_id_cache.json"):
+                    _load_jpl_overrides.clear()
+                    get_comet_summary.clear()
+                    get_asteroid_summary.clear()
+                    st.success("JPL cache cleared — reloading...")
+                    st.rerun()
+                # JPL Resolution Failures
+                _asteroid_failures_df = st.session_state.get("_asteroid_jpl_failures", None)
+                if _asteroid_failures_df is not None and not _asteroid_failures_df.empty:
+                    st.markdown("### ⚠️ JPL Resolution Failures")
+                    st.caption(f"{len(_asteroid_failures_df)} asteroid(s) could not be resolved via JPL Horizons.")
+                    for _, _fail_row in _asteroid_failures_df.iterrows():
+                        _fname = _fail_row["Name"]
+                        _ftried = _fail_row.get("_jpl_id_tried", "?")
+                        _ferr = _fail_row.get("_jpl_error", "Unknown error")
+                        with st.container():
+                            st.markdown(f"**{_fname}** — tried `{_ftried}`")
+                            st.caption(str(_ferr))
+                            _ovr_id = st.text_input(
+                                "Set JPL ID override",
+                                key=f"jpl_asteroid_ovr_{_fname}",
+                                placeholder="Enter JPL designation or SPK-ID",
+                            )
+                            if st.button("💾 Save Override", key=f"jpl_asteroid_btn_{_fname}"):
+                                if _ovr_id.strip():
+                                    from backend.config import read_jpl_overrides, write_jpl_overrides
+                                    _ovr_data = read_jpl_overrides(JPL_OVERRIDES_FILE)
+                                    _ovr_data["asteroids"][_fname] = _ovr_id.strip()
+                                    write_jpl_overrides(JPL_OVERRIDES_FILE, _ovr_data)
+                                    _load_jpl_overrides.clear()
+                                    get_asteroid_summary.clear()
+                                    st.success(f"Override saved: **{_fname}** → `{_ovr_id.strip()}`")
+                                    st.rerun()
+                                else:
+                                    st.warning("Enter a JPL ID before saving.")
+                            st.divider()
+                elif _asteroid_failures_df is not None:
+                    st.success("✅ All asteroids resolved via JPL Horizons.")
+                # else: _asteroid_failures_df is None → data not yet computed, show nothing
+
     # Batch visibility table
     if lat is None or lon is None or (lat == 0.0 and lon == 0.0):
         st.info("Set location in sidebar to see visibility summary for all asteroids.")
     elif active_asteroids:
         df_asteroids = get_asteroid_summary(lat, lon, start_time, tuple(active_asteroids))
+
+        # Store JPL failure rows in session state for admin panel + fire notifications
+        if not df_asteroids.empty and "_resolve_error" in df_asteroids.columns:
+            _af = df_asteroids[df_asteroids["_resolve_error"] == True]
+            st.session_state["_asteroid_jpl_failures"] = _af
+            for _, _fr in _af.iterrows():
+                _notify_jpl_failure(_fr["Name"], _fr.get("_jpl_id_tried", "?"), _fr.get("_jpl_error", ""))
+        else:
+            st.session_state["_asteroid_jpl_failures"] = pd.DataFrame()
 
         if not df_asteroids.empty:
             df_asteroids["Priority"] = df_asteroids["Name"].apply(
@@ -2998,6 +3304,13 @@ def render_asteroid_section(location, start_time, duration, min_alt, max_alt, az
             location_a = EarthLocation(lat=lat * u.deg, lon=lon * u.deg)
             is_obs_list, reason_list, moon_sep_list, moon_status_list = [], [], [], []
             for _, row in df_asteroids.iterrows():
+                # Short-circuit: stub rows from failed JPL lookups
+                if row.get("_resolve_error") is True:
+                    is_obs_list.append(False)
+                    reason_list.append(f"JPL lookup failed (tried: {row.get('_jpl_id_tried', '?')})")
+                    moon_sep_list.append("—")
+                    moon_status_list.append("")
+                    continue
                 try:
                     sc = SkyCoord(row['RA'], row['Dec'], frame='icrs')
                     check_times = [
@@ -3126,6 +3439,8 @@ def render_asteroid_section(location, start_time, duration, min_alt, max_alt, az
             with st.spinner(f"Querying JPL Horizons for {obj_name}..."):
                 utc_start = start_time.astimezone(pytz.utc)
                 name, sky_coord = resolve_horizons(obj_name, obs_time_str=utc_start.strftime('%Y-%m-%d %H:%M:%S'))
+            if selected_target != "Custom Asteroid...":
+                name = selected_target  # show display name ("2 Pallas"), not bare JPL ID ("2")
             st.success(f"✅ Resolved: **{name}**")
             resolved = True
         except Exception as e:

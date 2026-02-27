@@ -46,3 +46,6 @@ docs/plans/
 .env
 .env.*
 *.env
+
+# JPL ID cache — committed; updated by scripts/populate_jpl_cache.py
+# jpl_id_cache.json

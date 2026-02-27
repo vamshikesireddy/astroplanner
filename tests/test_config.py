@@ -127,3 +127,72 @@ def test_read_dso_config_empty_file():
         assert result["astrophotography_favorites"] == []
     finally:
         os.unlink(path)
+
+
+# --- jpl_id_overrides and jpl_id_cache tests ---
+from backend.config import read_jpl_overrides, read_jpl_cache, write_jpl_cache, write_jpl_overrides
+
+
+def test_read_jpl_overrides_missing_file():
+    result = read_jpl_overrides("/nonexistent/path.yaml")
+    assert result["comets"] == {}
+    assert result["asteroids"] == {}
+
+
+def test_read_jpl_overrides_existing_file():
+    data = {"comets": {"C/2025 N1 (ATLAS)": "3I"}, "asteroids": {}}
+    with tempfile.NamedTemporaryFile(mode='w', suffix='.yaml', delete=False) as f:
+        yaml.dump(data, f)
+        path = f.name
+    try:
+        result = read_jpl_overrides(path)
+        assert result["comets"]["C/2025 N1 (ATLAS)"] == "3I"
+        assert result["asteroids"] == {}
+    finally:
+        os.unlink(path)
+
+
+def test_read_jpl_cache_missing_file():
+    result = read_jpl_cache("/nonexistent.json")
+    assert result["comets"] == {}
+    assert result["asteroids"] == {}
+    assert result["notified"] == []
+
+
+def test_read_jpl_cache_corrupted_file():
+    with tempfile.NamedTemporaryFile(mode='w', suffix='.json', delete=False) as f:
+        f.write("not valid json {{{")
+        path = f.name
+    try:
+        result = read_jpl_cache(path)
+        assert result["comets"] == {}
+        assert result["asteroids"] == {}
+        assert result["notified"] == []
+    finally:
+        os.unlink(path)
+
+
+def test_write_and_read_jpl_cache_roundtrip():
+    with tempfile.NamedTemporaryFile(mode='w', suffix='.json', delete=False) as f:
+        path = f.name
+    try:
+        data = {"comets": {"C/2025 Q3 (ATLAS)": "90004812"}, "asteroids": {}, "notified": []}
+        write_jpl_cache(path, data)
+        result = read_jpl_cache(path)
+        assert result["comets"]["C/2025 Q3 (ATLAS)"] == "90004812"
+        assert result["notified"] == []
+    finally:
+        os.unlink(path)
+
+
+def test_write_and_read_jpl_overrides_roundtrip():
+    with tempfile.NamedTemporaryFile(mode='w', suffix='.yaml', delete=False) as f:
+        path = f.name
+    try:
+        data = {"comets": {"C/2025 N1 (ATLAS)": "3I"}, "asteroids": {"433 Eros": "433"}}
+        write_jpl_overrides(path, data)
+        result = read_jpl_overrides(path)
+        assert result["comets"]["C/2025 N1 (ATLAS)"] == "3I"
+        assert result["asteroids"]["433 Eros"] == "433"
+    finally:
+        os.unlink(path)
