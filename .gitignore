@@ -46,3 +46,6 @@ docs/plans/
 .env
 .env.*
 *.env
+
+# JPL ID cache (auto-generated at runtime, not committed)
+jpl_id_cache.json

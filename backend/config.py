@@ -57,3 +57,45 @@ def read_dso_config(path):
     data.setdefault("bright_stars", [])
     data.setdefault("astrophotography_favorites", [])
     return data
+
+
+def read_jpl_overrides(path):
+    """Load jpl_id_overrides.yaml → dict with 'comets' and 'asteroids' keys."""
+    if os.path.exists(path):
+        with open(path, "r") as f:
+            data = yaml.safe_load(f) or {}
+    else:
+        data = {}
+    data.setdefault("comets", {})
+    data.setdefault("asteroids", {})
+    return data
+
+
+def write_jpl_overrides(path, data):
+    """Write jpl_id_overrides.yaml."""
+    with open(path, "w") as f:
+        yaml.dump(data, f, default_flow_style=False, allow_unicode=True)
+
+
+def read_jpl_cache(path):
+    """Load jpl_id_cache.json → dict with 'comets', 'asteroids', 'notified' keys."""
+    if not os.path.exists(path):
+        return {"comets": {}, "asteroids": {}, "notified": []}
+    try:
+        with open(path, "r", encoding="utf-8") as f:
+            data = json.load(f)
+        data.setdefault("comets", {})
+        data.setdefault("asteroids", {})
+        data.setdefault("notified", [])
+        return data
+    except Exception:
+        return {"comets": {}, "asteroids": {}, "notified": []}
+
+
+def write_jpl_cache(path, data):
+    """Write jpl_id_cache.json. Silently ignores write errors (non-fatal)."""
+    try:
+        with open(path, "w", encoding="utf-8") as f:
+            json.dump(data, f, indent=2)
+    except Exception:
+        pass

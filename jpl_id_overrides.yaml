@@ -1,0 +1,9 @@
+# jpl_id_overrides.yaml
+# Admin-committed permanent JPL ID fixes.
+# Keys are the display names from comets.yaml / asteroids.yaml.
+# Values are the JPL Horizons query ID (designation or SPK-ID).
+comets:
+  "C/2025 N1 (ATLAS)": "3I"    # redesignated as 3I/ATLAS (interstellar)
+  "240P": "90001202"             # 240P/NEAT Fragment A
+  "240P-B": "90001203"           # 240P/NEAT Fragment B
+asteroids: {}
