@@ -1269,7 +1269,9 @@ def get_comet_summary(lat, lon, start_time, comet_tuple):
             }
 
     deduped_comets = _dedup_by_jpl_id(list(comet_tuple), _comet_id_local)
-    with ThreadPoolExecutor(max_workers=max(1, min(len(deduped_comets), 8))) as executor:
+    # Cap at 3 workers — JPL Horizons rate-limits aggressively under high concurrency;
+    # sequential tests always pass, 8 parallel workers caused ~50% failures.
+    with ThreadPoolExecutor(max_workers=max(1, min(len(deduped_comets), 3))) as executor:
         results = list(executor.map(_fetch, deduped_comets))
     return pd.DataFrame(results)   # every entry is a row — no filter(None)
 
@@ -1435,7 +1437,8 @@ def get_asteroid_summary(lat, lon, start_time, asteroid_tuple):
             }
 
     deduped_asteroids = _dedup_by_jpl_id(list(asteroid_tuple), _asteroid_id_local)
-    with ThreadPoolExecutor(max_workers=max(1, min(len(deduped_asteroids), 8))) as executor:
+    # Cap at 3 workers — JPL Horizons rate-limits aggressively under high concurrency.
+    with ThreadPoolExecutor(max_workers=max(1, min(len(deduped_asteroids), 3))) as executor:
         results = list(executor.map(_fetch, deduped_asteroids))
     return pd.DataFrame(results)   # every entry is a row — no filter(None)
 
