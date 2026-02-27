@@ -1589,7 +1589,7 @@ _az_status = (
 )
 st.sidebar.markdown("**🧭 Azimuth Direction**")
 if _az_selected_count == 0 or _az_selected_count == len(_AZ_LABELS):
-    st.sidebar.caption("Check one or more directions to restrict targets to a specific part of the sky.")
+    st.sidebar.caption("📡 All 360° shown by default — check directions to restrict to a specific part of the sky.")
 else:
     st.sidebar.caption(_az_status)
 _az_cols = st.sidebar.columns(2)
