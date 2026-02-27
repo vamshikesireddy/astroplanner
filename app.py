@@ -3121,7 +3121,8 @@ def render_comet_section(location, start_time, duration, min_alt, max_alt, az_di
                             f"\U0001f47b Unobservable ({len(_df_filt_cat)})"
                         ])
                         _show_cols_cat = ["Name", "Constellation", "Rise", "Transit", "Set",
-                                          "RA", "_dec_deg", "Status", "_peak_alt_session"]
+                                          "RA", "_dec_deg", "Status", "_peak_alt_session",
+                                          "Moon Sep (°)", "Moon Status"]
                         with _tab_obs_cat:
                             st.subheader("Observable Comets (Catalog)")
                             _chart_sort_cat = plot_visibility_timeline(
