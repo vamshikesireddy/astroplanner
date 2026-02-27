@@ -796,6 +796,10 @@ def _render_night_plan_builder(
     csv_label="All Targets (CSV)", csv_data=None,
     csv_filename="targets.csv", section_key="",
     duration_minutes=None,
+    location=None,
+    min_alt=0,
+    min_moon_sep=0,
+    az_dirs=None,
 ):
     """Render a Night Plan Builder UI inside an already-open st.expander.
 
@@ -977,6 +981,23 @@ def _render_night_plan_builder(
             "sorted by **Transit Time** — targets that transit soonest appear first."
         )
 
+    # ── Parameters summary ─────────────────────────────────────────────
+    _win_hrs = (_win_range[1] - _win_range[0]).total_seconds() / 3600
+    _summary_parts = [
+        (f"Window: {_win_range[0].strftime('%b %d %H:%M')} → "
+         f"{_win_range[1].strftime('%b %d %H:%M')} ({_win_hrs:.0f} hrs)"),
+        f"Min alt: {min_alt}°",
+        f"Moon sep: ≥ {min_moon_sep}°",
+    ]
+    if az_dirs:
+        _az_ordered = [d for d in _AZ_LABELS if d in az_dirs]
+        _summary_parts.append(f"Az: {', '.join(_az_ordered)}")
+    if pri_col and _sel_pri:
+        _summary_parts.append(f"Priority: {', '.join(_sel_pri)}")
+    if _sel_moon is not None and len(_sel_moon) < len(_all_moon_statuses):
+        _summary_parts.append(f"Moon: {', '.join(_sel_moon)}")
+    st.info("📋 " + "  •  ".join(_summary_parts))
+
     # ── Row 3: action buttons ─────────────────────────────────────────
     _bc1, _bc2 = st.columns(2)
     with _bc1:
@@ -1008,6 +1029,8 @@ def _render_night_plan_builder(
                 disc_col=disc_col,      disc_days=_disc_days,
                 win_start_dt=_win_start_dt, win_end_dt=_win_end_dt,
                 sel_moon=_sel_moon,     all_moon_statuses=_all_moon_statuses,
+                location=location,
+                min_alt=min_alt,
             )
 
             if _plan_src.empty:
