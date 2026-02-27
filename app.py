@@ -2207,10 +2207,11 @@ def render_dso_section(location, start_time, duration, min_alt, max_alt, az_dirs
                 )
 
             df_obs_d = df_dsos[df_dsos["is_observable"]].copy()
+            _add_peak_alt_session(df_obs_d, location, start_time, start_time + timedelta(minutes=duration))
             df_filt_d = df_dsos[~df_dsos["is_observable"]].copy()
 
             display_cols_d = ["Name", "Common Name", "Type", "Magnitude", "Constellation",
-                              "Rise", "Transit", "Set", "RA", "_dec_deg", "Status", "Moon Sep (°)", "Moon Status"]
+                              "Rise", "Transit", "Set", "RA", "_dec_deg", "Status", "_peak_alt_session", "Moon Sep (°)", "Moon Status"]
 
             def display_dso_table(df_in):
                 show = [c for c in display_cols_d if c in df_in.columns]
