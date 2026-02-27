@@ -4395,12 +4395,23 @@ def render_exoplanet_section(location, start_time, duration, min_alt, max_alt, a
                               min_moon_sep, min_dec, max_dec, moon_loc, moon_illum,
                               show_obs_window, obs_start_naive, obs_end_naive, local_tz,
                               lat, lon):
-    """Exoplanet Transits section — Unistellar missions, next 7 days."""
+    """Exoplanet Transits section — Unistellar missions, next 10 days."""
     tz_name = str(local_tz)
+
+    from datetime import datetime as _dt
+    _night_anchor = (
+        (start_time - timedelta(days=1)).date()
+        if start_time.hour < 6
+        else start_time.date()
+    )
+    _night_plan_start = _dt(
+        _night_anchor.year, _night_anchor.month, _night_anchor.day, 18, 0
+    )
+    _night_plan_end = _night_plan_start + timedelta(hours=18)
 
     st.header("🪐 Exoplanet Transits")
     st.caption(
-        "Transit windows for Unistellar active missions over the next 7 days. "
+        "Transit windows for Unistellar active missions over the next 10 days. "
         "Score = completeness + altitude during transit + moon separation + duration. "
         "Observable = Score ≥ 30 and min altitude ≥ 20°."
     )
@@ -4448,6 +4459,13 @@ def render_exoplanet_section(location, start_time, duration, min_alt, max_alt, a
     df_obs  = df[df["is_observable"]].copy()
     df_filt = df[~df["is_observable"]].copy()
 
+    if location is not None and not df_obs.empty:
+        df_obs = _add_peak_alt_session(
+            df_obs, location,
+            start_time,
+            start_time + timedelta(minutes=duration),
+        )
+
     _DISPLAY_COLS = [
         "Planet", "Host Star", "Date", "Ingress", "Mid-Transit", "Egress",
         "Arc", "Duration", "Completeness", "Depth (mmag)", "Min Alt During Transit",
@@ -4460,8 +4478,9 @@ def render_exoplanet_section(location, start_time, duration, min_alt, max_alt, a
     ])
 
     with tab_obs:
+        st.markdown("#### 1. Choose Transit")
         if df_obs.empty:
-            st.info("No observable transits in the next 7 days from your location.")
+            st.info("No observable transits in the next 10 days from your location.")
         else:
             # Best opportunity callout
             _best_idx = df_obs["Score"].idxmax()
@@ -4493,17 +4512,19 @@ def render_exoplanet_section(location, start_time, duration, min_alt, max_alt, a
                 "(from Swarthmore Transit Finder)."
             )
 
-            with st.expander("📅 Night Plan Builder", expanded=False):
+            with st.expander("2. 📅 Night Plan Builder", expanded=False):
                 _render_night_plan_builder(
                     df_obs=df_obs,
                     start_time=start_time,
-                    night_end=start_time + timedelta(minutes=duration),
+                    night_plan_start=_night_plan_start,
+                    night_plan_end=_night_plan_end,
                     local_tz=local_tz,
                     target_col="Planet",
                     ra_col="RA",
                     dec_col="Dec",
                     section_key="exoplanet",
                     csv_filename="exoplanet_transits.csv",
+                    duration_minutes=duration,
                 )
 
     with tab_filt:
@@ -4519,7 +4540,7 @@ def render_exoplanet_section(location, start_time, duration, min_alt, max_alt, a
     # Trajectory picker
     if not df_obs.empty:
         st.divider()
-        st.subheader("🔭 Transit Detail")
+        st.subheader("3. 🔭 Select Transit for Trajectory")
         _event_labels = df_obs.apply(
             lambda r: f"{r['Planet']} — {r['Date']} {r['Ingress']}–{r['Egress']}", axis=1
         ).tolist()
@@ -4540,6 +4561,7 @@ def render_exoplanet_section(location, start_time, duration, min_alt, max_alt, a
                 traj_df = pd.DataFrame(traj)
                 if not traj_df.empty and "Local Time" in traj_df.columns:
                     st.line_chart(traj_df.set_index("Local Time")["Altitude (°)"])
+                    st.markdown("#### 4. Trajectory Results")
                     st.caption(
                         f"Transit window: **{_sel_row['Ingress']}** (ingress) → "
                         f"**{_sel_row['Mid-Transit']}** (mid) → "
