@@ -3617,10 +3617,11 @@ def render_asteroid_section(location, start_time, duration, min_alt, max_alt, az
                 )
 
             df_obs_a = df_asteroids[df_asteroids["is_observable"]].copy()
+            _add_peak_alt_session(df_obs_a, location, start_time, start_time + timedelta(minutes=duration))
             df_filt_a = df_asteroids[~df_asteroids["is_observable"]].copy()
 
             display_cols_a = ["Name", "Priority", "Window", "Constellation", "Rise", "Transit", "Set",
-                              "RA", "_dec_deg", "Status", "Moon Sep (°)", "Moon Status"]
+                              "RA", "_dec_deg", "Status", "_peak_alt_session", "Moon Sep (°)", "Moon Status"]
 
             def display_asteroid_table(df_in):
                 show = [c for c in display_cols_a if c in df_in.columns]
