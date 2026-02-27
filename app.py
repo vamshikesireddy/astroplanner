@@ -1195,6 +1195,7 @@ def get_comet_summary(lat, lon, start_time, comet_tuple):
         return name.split('(')[0].strip()
 
     def _fetch(comet_name):
+        from backend.sbdb import sbdb_lookup  # import here, not inside except block
         jpl_id = _comet_id_local(comet_name)
         try:
             _, sky_coord = resolve_horizons(jpl_id, obs_time_str=obs_time_str)
@@ -1212,7 +1213,6 @@ def get_comet_summary(lat, lon, start_time, comet_tuple):
             row.update(details)
             return row
         except Exception as first_exc:
-            from backend.sbdb import sbdb_lookup
             # Try full display name first, then stripped jpl_id (catches cases where
             # display name has parenthetical that SBDB can't handle but stripped form can)
             sbdb_id = sbdb_lookup(comet_name)
@@ -1346,8 +1346,26 @@ def get_asteroid_summary(lat, lon, start_time, asteroid_tuple):
     except Exception:
         moon_loc_inner = None
         moon_illum_inner = 0
+    # --- Thread-safe: load @st.cache_data maps BEFORE spawning workers ---
+    _overrides = _load_jpl_overrides()   # @st.cache_data — safe here (main thread)
+    _jpl_cache = _load_jpl_cache()       # plain file read, always safe
+
+    def _asteroid_id_local(name):
+        """Resolve asteroid display name → JPL ID using pre-loaded maps (no Streamlit cache calls)."""
+        import re as _re
+        if name in _overrides.get("asteroids", {}):
+            return _overrides["asteroids"][name]
+        if name in _jpl_cache.get("asteroids", {}):
+            return _jpl_cache["asteroids"][name]
+        if name and _re.match(r'^\d{4}\s+[A-Z]{1,2}\d', name):
+            return name  # Provisional: e.g. '2001 FD58'
+        if name and name[0].isdigit():
+            return name.split(' ')[0]  # Numbered: '433 Eros' → '433'
+        return name
+
     def _fetch(asteroid_name):
-        jpl_id = _asteroid_jpl_id(asteroid_name)
+        from backend.sbdb import sbdb_lookup  # import here, not inside except block
+        jpl_id = _asteroid_id_local(asteroid_name)
         try:
             _, sky_coord = resolve_horizons(jpl_id, obs_time_str=obs_time_str)
             details = calculate_planning_info(sky_coord, location, start_time)
@@ -1359,13 +1377,14 @@ def get_asteroid_summary(lat, lon, start_time, asteroid_tuple):
                 "_dec_deg": sky_coord.dec.degree,
                 "Moon Sep (°)": round(moon_sep, 1),
                 "Moon Status": get_moon_status(moon_illum_inner, moon_sep) if moon_loc_inner else "",
+                "_jpl_id_used": jpl_id,
             }
             row.update(details)
             return row
         except Exception as first_exc:
-            # SBDB auto-resolve fallback
-            from backend.sbdb import sbdb_lookup
             sbdb_id = sbdb_lookup(asteroid_name)
+            if sbdb_id is None and jpl_id != asteroid_name:
+                sbdb_id = sbdb_lookup(jpl_id)
             if sbdb_id and sbdb_id != jpl_id:
                 try:
                     _, sky_coord = resolve_horizons(sbdb_id, obs_time_str=obs_time_str)
@@ -1379,12 +1398,12 @@ def get_asteroid_summary(lat, lon, start_time, asteroid_tuple):
                         "_dec_deg": sky_coord.dec.degree,
                         "Moon Sep (°)": round(moon_sep, 1),
                         "Moon Status": get_moon_status(moon_illum_inner, moon_sep) if moon_loc_inner else "",
+                        "_jpl_id_used": sbdb_id,
                     }
                     row.update(details)
                     return row
                 except Exception:
                     pass
-            # All resolution attempts failed — return stub row (never None)
             return {
                 "Name": asteroid_name,
                 "RA": "—", "Dec": "—", "_dec_deg": 0.0,
@@ -1394,11 +1413,12 @@ def get_asteroid_summary(lat, lon, start_time, asteroid_tuple):
                 "Moon Sep (°)": "—", "Moon Status": "—",
                 "_resolve_error": True,
                 "_jpl_id_tried": jpl_id,
+                "_jpl_id_used": jpl_id,
                 "_jpl_error": str(first_exc)[:200],
             }
 
-    deduped_asteroids = _dedup_by_jpl_id(list(asteroid_tuple), _asteroid_jpl_id)
-    with ThreadPoolExecutor(max_workers=min(len(deduped_asteroids), 8)) as executor:
+    deduped_asteroids = _dedup_by_jpl_id(list(asteroid_tuple), _asteroid_id_local)
+    with ThreadPoolExecutor(max_workers=max(1, min(len(deduped_asteroids), 8))) as executor:
         results = list(executor.map(_fetch, deduped_asteroids))
     return pd.DataFrame(results)   # every entry is a row — no filter(None)
 
