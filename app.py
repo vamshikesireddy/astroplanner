@@ -40,7 +40,7 @@ except ImportError:
 
 # Import from local modules
 from backend.resolvers import resolve_simbad, resolve_horizons, get_horizons_ephemerides, resolve_planet, get_planet_ephemerides
-from backend.core import compute_trajectory, calculate_planning_info, azimuth_to_compass, moon_sep_deg
+from backend.core import compute_trajectory, calculate_planning_info, azimuth_to_compass, moon_sep_deg, compute_peak_alt_in_window
 from backend.scrape import scrape_unistellar_table, scrape_unistellar_priority_comets, scrape_unistellar_priority_asteroids
 from backend.github import create_issue as _gh_create_issue
 
@@ -182,6 +182,7 @@ def get_planet_summary(lat, lon, start_time):
                 "RA": sky_coord.ra.to_string(unit=u.hour, sep=('h ', 'm ', 's'), precision=0, pad=True),
                 "Dec": sky_coord.dec.to_string(sep=('° ', "' ", '"'), precision=0, alwayssign=True, pad=True),
                 "_dec_deg": sky_coord.dec.degree,
+                "_ra_deg":  sky_coord.ra.deg,
                 "Moon Sep (°)": round(moon_sep, 1) if moon_loc else 0,
                 "Moon Status": get_moon_status(moon_illum, moon_sep) if moon_loc else "",
             }
@@ -1254,6 +1255,7 @@ def get_comet_summary(lat, lon, start_time, comet_tuple):
                 "RA": sky_coord.ra.to_string(unit=u.hour, sep=('h ', 'm ', 's'), precision=0, pad=True),
                 "Dec": sky_coord.dec.to_string(sep=('° ', "' ", '"'), precision=0, alwayssign=True, pad=True),
                 "_dec_deg": sky_coord.dec.degree,
+                "_ra_deg":  sky_coord.ra.deg,
                 "Moon Sep (°)": round(moon_sep, 1),
                 "Moon Status": get_moon_status(moon_illum_inner, moon_sep) if moon_loc_inner else "",
                 "_jpl_id_used": "(ephemeris cache)",
@@ -1276,6 +1278,7 @@ def get_comet_summary(lat, lon, start_time, comet_tuple):
                 "RA": sky_coord.ra.to_string(unit=u.hour, sep=('h ', 'm ', 's'), precision=0, pad=True),
                 "Dec": sky_coord.dec.to_string(sep=('° ', "' ", '"'), precision=0, alwayssign=True, pad=True),
                 "_dec_deg": sky_coord.dec.degree,
+                "_ra_deg":  sky_coord.ra.deg,
                 "Moon Sep (°)": round(moon_sep, 1),
                 "Moon Status": get_moon_status(moon_illum_inner, moon_sep) if moon_loc_inner else "",
                 "_jpl_id_used": jpl_id,
@@ -1298,6 +1301,7 @@ def get_comet_summary(lat, lon, start_time, comet_tuple):
                         "RA": sky_coord.ra.to_string(unit=u.hour, sep=('h ', 'm ', 's'), precision=0, pad=True),
                         "Dec": sky_coord.dec.to_string(sep=('° ', "' ", '"'), precision=0, alwayssign=True, pad=True),
                         "_dec_deg": sky_coord.dec.degree,
+                        "_ra_deg":  sky_coord.ra.deg,
                         "Moon Sep (°)": round(moon_sep, 1),
                         "Moon Status": get_moon_status(moon_illum_inner, moon_sep) if moon_loc_inner else "",
                         "_jpl_id_used": sbdb_id,
@@ -1453,6 +1457,7 @@ def get_asteroid_summary(lat, lon, start_time, asteroid_tuple):
                 "RA": sky_coord.ra.to_string(unit=u.hour, sep=('h ', 'm ', 's'), precision=0, pad=True),
                 "Dec": sky_coord.dec.to_string(sep=('° ', "' ", '"'), precision=0, alwayssign=True, pad=True),
                 "_dec_deg": sky_coord.dec.degree,
+                "_ra_deg":  sky_coord.ra.deg,
                 "Moon Sep (°)": round(moon_sep, 1),
                 "Moon Status": get_moon_status(moon_illum_inner, moon_sep) if moon_loc_inner else "",
                 "_jpl_id_used": "(ephemeris cache)",
@@ -1475,6 +1480,7 @@ def get_asteroid_summary(lat, lon, start_time, asteroid_tuple):
                 "RA": sky_coord.ra.to_string(unit=u.hour, sep=('h ', 'm ', 's'), precision=0, pad=True),
                 "Dec": sky_coord.dec.to_string(sep=('° ', "' ", '"'), precision=0, alwayssign=True, pad=True),
                 "_dec_deg": sky_coord.dec.degree,
+                "_ra_deg":  sky_coord.ra.deg,
                 "Moon Sep (°)": round(moon_sep, 1),
                 "Moon Status": get_moon_status(moon_illum_inner, moon_sep) if moon_loc_inner else "",
                 "_jpl_id_used": jpl_id,
@@ -1496,6 +1502,7 @@ def get_asteroid_summary(lat, lon, start_time, asteroid_tuple):
                         "RA": sky_coord.ra.to_string(unit=u.hour, sep=('h ', 'm ', 's'), precision=0, pad=True),
                         "Dec": sky_coord.dec.to_string(sep=('° ', "' ", '"'), precision=0, alwayssign=True, pad=True),
                         "_dec_deg": sky_coord.dec.degree,
+                        "_ra_deg":  sky_coord.ra.deg,
                         "Moon Sep (°)": round(moon_sep, 1),
                         "Moon Status": get_moon_status(moon_illum_inner, moon_sep) if moon_loc_inner else "",
                         "_jpl_id_used": sbdb_id,
@@ -1573,6 +1580,7 @@ def get_dso_summary(lat, lon, start_time, dso_tuple):
                 "RA": sky_coord.ra.to_string(unit=u.hour, sep=('h ', 'm ', 's'), precision=0, pad=True),
                 "Dec": sky_coord.dec.to_string(sep=('° ', "' ", '"'), precision=0, alwayssign=True, pad=True),
                 "_dec_deg": dec_deg,
+                "_ra_deg":  sky_coord.ra.deg,
                 "Moon Sep (°)": round(moon_sep, 1),
                 "Moon Status": get_moon_status(moon_illum_inner, moon_sep) if moon_loc_inner else "",
             }
@@ -3915,6 +3923,7 @@ def render_cosmic_section(location, start_time, duration, min_alt, max_alt, az_d
                     row_dict = row.to_dict()
                     row_dict.update(details)
                     row_dict['_dec_deg'] = sc.dec.degree   # needed for Dec filter
+                    row_dict['_ra_deg']  = sc.ra.deg
                     row_dict['is_observable'] = is_obs
                     row_dict['filter_reason'] = filt_reason
                     row_dict['Moon Sep (°)'] = f"{moon_sep:.1f}°–{_moon_sep_max:.1f}°" if moon_loc else "–"
