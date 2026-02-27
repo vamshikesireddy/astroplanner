@@ -84,3 +84,58 @@ def test_dedup_by_jpl_id_keeps_unique_entries(tmp_path):
         names = ["C/2022 N2 (PANSTARRS)", "C/2025 K1 (ATLAS)", "29P/Schwassmann-Wachmann 1"]
         deduped = app._dedup_by_jpl_id(names, app._get_comet_jpl_id)
     assert len(deduped) == 3
+
+
+def test_get_asteroid_jpl_id_override_takes_priority(tmp_path):
+    """Override wins over everything for asteroids."""
+    ovr_path, cache_path = _make_files(
+        tmp_path,
+        overrides_data={"comets": {}, "asteroids": {"433 Eros": "OVERRIDE"}},
+        cache_data={"comets": {}, "asteroids": {"433 Eros": "WRONG"}, "notified": []},
+    )
+    with patch("app.JPL_OVERRIDES_FILE", ovr_path), patch("app.JPL_CACHE_FILE", cache_path):
+        import app
+        app._load_jpl_overrides.clear()
+        result = app._asteroid_jpl_id("433 Eros")
+    assert result == "OVERRIDE"
+
+
+def test_get_asteroid_jpl_id_cache_used_when_no_override(tmp_path):
+    ovr_path, cache_path = _make_files(
+        tmp_path,
+        cache_data={"comets": {}, "asteroids": {"2001 FD58": "CACHED_ID"}, "notified": []},
+    )
+    with patch("app.JPL_OVERRIDES_FILE", ovr_path), patch("app.JPL_CACHE_FILE", cache_path):
+        import app
+        app._load_jpl_overrides.clear()
+        result = app._asteroid_jpl_id("2001 FD58")
+    assert result == "CACHED_ID"
+
+
+def test_get_asteroid_jpl_id_provisional_designation(tmp_path):
+    """Provisional designation stays as-is (e.g. '2001 FD58')."""
+    ovr_path, cache_path = _make_files(tmp_path)
+    with patch("app.JPL_OVERRIDES_FILE", ovr_path), patch("app.JPL_CACHE_FILE", cache_path):
+        import app
+        app._load_jpl_overrides.clear()
+        assert app._asteroid_jpl_id("2001 FD58") == "2001 FD58"
+        assert app._asteroid_jpl_id("2001 SN263") == "2001 SN263"
+
+
+def test_get_asteroid_jpl_id_numbered_asteroid(tmp_path):
+    """Numbered asteroid extracts the number ('433 Eros' -> '433')."""
+    ovr_path, cache_path = _make_files(tmp_path)
+    with patch("app.JPL_OVERRIDES_FILE", ovr_path), patch("app.JPL_CACHE_FILE", cache_path):
+        import app
+        app._load_jpl_overrides.clear()
+        assert app._asteroid_jpl_id("433 Eros") == "433"
+        assert app._asteroid_jpl_id("99942 Apophis") == "99942"
+
+
+def test_get_asteroid_jpl_id_bare_name_passthrough(tmp_path):
+    """Bare name without number passes through unchanged."""
+    ovr_path, cache_path = _make_files(tmp_path)
+    with patch("app.JPL_OVERRIDES_FILE", ovr_path), patch("app.JPL_CACHE_FILE", cache_path):
+        import app
+        app._load_jpl_overrides.clear()
+        assert app._asteroid_jpl_id("Apophis") == "Apophis"

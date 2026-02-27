@@ -1080,7 +1080,7 @@ def _save_jpl_cache_entry(section, name, jpl_id):
     """Persist a newly SBDB-resolved JPL ID to jpl_id_cache.json."""
     from backend.config import read_jpl_cache, write_jpl_cache
     cache = read_jpl_cache(JPL_CACHE_FILE)
-    cache[section][name] = jpl_id
+    cache.setdefault(section, {})[name] = jpl_id
     write_jpl_cache(JPL_CACHE_FILE, cache)
 
 
