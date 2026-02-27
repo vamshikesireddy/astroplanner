@@ -2400,10 +2400,11 @@ def render_planet_section(location, start_time, duration, min_alt, max_alt, az_d
                 )
 
             df_obs_p = df_planets[df_planets["is_observable"]].copy()
+            _add_peak_alt_session(df_obs_p, location, start_time, start_time + timedelta(minutes=duration))
             df_filt_p = df_planets[~df_planets["is_observable"]].copy()
 
             display_cols_p = ["Name", "Constellation", "Rise", "Transit", "Set",
-                              "RA", "_dec_deg", "Status", "Moon Sep (°)", "Moon Status"]
+                              "RA", "_dec_deg", "Status", "_peak_alt_session", "Moon Sep (°)", "Moon Status"]
 
             tab_obs_p, tab_filt_p = st.tabs([
                 f"🎯 Observable ({len(df_obs_p)})",
