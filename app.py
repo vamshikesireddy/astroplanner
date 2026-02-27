@@ -752,7 +752,7 @@ def _apply_night_plan_filters(
 
 
 def _render_night_plan_builder(
-    df_obs, start_time, night_end, local_tz,
+    df_obs, start_time, night_plan_start, night_plan_end, local_tz,
     target_col="Name", ra_col="RA", dec_col="Dec",
     pri_col=None, dur_col=None, vmag_col=None,
     type_col=None, disc_col=None, link_col=None,
@@ -867,31 +867,30 @@ def _render_night_plan_builder(
             help="Deselect '⛔ Avoid' to exclude targets too close to the Moon.",
         )
 
-    # Row 2b: observation window sliders
-    _start_default = min(max(start_time.hour, 14), 23)
-    _night_end_h = night_end.hour
-    _end_default = _night_end_h if _night_end_h <= 12 else 6
-    _row_wnd = st.columns(2)
-    with _row_wnd[0]:
-        _win_start_h = st.slider(
-            "Start (tonight)",
-            min_value=14, max_value=23,
-            value=_start_default,
-            format="%02d:00",
-            key=f"{section_key}_win_start",
-            help="Slide left to begin your plan earlier in the evening.",
-        )
-    with _row_wnd[1]:
-        _win_end_h = st.slider(
-            "End (next morning)",
-            min_value=0, max_value=12,
-            value=_end_default,
-            format="%02d:00",
-            key=f"{section_key}_win_end",
-            help="Slide right to extend your session later into the morning.",
-        )
-    _win_hours = (_win_end_h + 24 - _win_start_h) % 24 or 24
-    st.caption(f"Window: **{_win_start_h:02d}:00** tonight → **{_win_end_h:02d}:00** next morning — **{_win_hours} hrs**")
+    # Row 2b: unified night session window slider
+    # Clamp the default start to the valid night range.
+    _st_naive = start_time.replace(tzinfo=None)
+    _slider_default_start = min(
+        max(_st_naive, night_plan_start),
+        night_plan_end - timedelta(minutes=30),
+    )
+    _win_range = st.slider(
+        "Session window",
+        min_value=night_plan_start,
+        max_value=night_plan_end,
+        value=(_slider_default_start, night_plan_end),
+        step=timedelta(minutes=30),
+        format="%b %d %H:%M",
+        key=f"{section_key}_win_range",
+        help="Drag the handles to set the start and end of your observing session.",
+    )
+    _win_start_dt = local_tz.localize(_win_range[0])
+    _win_end_dt = local_tz.localize(_win_range[1])
+    _win_hours = max(0, int((_win_end_dt - _win_start_dt).total_seconds() / 3600))
+    st.caption(
+        f"Window: **{_win_range[0].strftime('%b %d %H:%M')}** → "
+        f"**{_win_range[1].strftime('%b %d %H:%M')}** — **{_win_hours} hrs**"
+    )
 
     # Sort radio
     _sort_by = st.radio(
@@ -944,8 +943,7 @@ def _render_night_plan_builder(
                 vmag_col=vmag_col,      vmag_range=_vmag_range,
                 type_col=type_col,      sel_types=_sel_types,
                 disc_col=disc_col,      disc_days=_disc_days,
-                local_tz=local_tz,      start_time=start_time,
-                win_start_h=_win_start_h, win_end_h=_win_end_h,
+                win_start_dt=_win_start_dt, win_end_dt=_win_end_dt,
                 sel_moon=_sel_moon,     all_moon_statuses=_all_moon_statuses,
             )
 
@@ -1032,7 +1030,7 @@ def _render_night_plan_builder(
                         )
                     with _dl2:
                         _pdf = generate_plan_pdf(
-                            _scheduled, start_time, night_end,
+                            _scheduled, _win_start_dt, _win_end_dt,
                             target_col, _plan_link_col, dur_col, pri_col,
                             ra_col, dec_col, vmag_col,
                         )
