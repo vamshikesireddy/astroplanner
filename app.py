@@ -3113,6 +3113,7 @@ def render_comet_section(location, start_time, duration, min_alt, max_alt, az_di
                         _df_cat["is_observable"] = _is_obs_cat
                         _df_cat["filter_reason"] = _reason_cat
                         _df_obs_cat = _df_cat[_df_cat["is_observable"]].copy()
+                        _add_peak_alt_session(_df_obs_cat, _location_cat, start_time, start_time + timedelta(minutes=duration))
                         _df_filt_cat = _df_cat[~_df_cat["is_observable"]].copy()
 
                         _tab_obs_cat, _tab_filt_cat = st.tabs([
@@ -3120,7 +3121,7 @@ def render_comet_section(location, start_time, duration, min_alt, max_alt, az_di
                             f"\U0001f47b Unobservable ({len(_df_filt_cat)})"
                         ])
                         _show_cols_cat = ["Name", "Constellation", "Rise", "Transit", "Set",
-                                          "RA", "_dec_deg", "Status"]
+                                          "RA", "_dec_deg", "Status", "_peak_alt_session"]
                         with _tab_obs_cat:
                             st.subheader("Observable Comets (Catalog)")
                             _chart_sort_cat = plot_visibility_timeline(
