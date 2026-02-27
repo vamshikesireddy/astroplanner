@@ -4,6 +4,22 @@ Bug fixes, discoveries, and notable changes. See CLAUDE.md for architecture and 
 
 ---
 
+## 2026-03-01 — Fix: Peak Alt integer formatting in night plan PDF
+
+**Commit:** `0712527`
+**Tests:** 66 pass
+
+### Problem
+PDF night plan export showed raw float precision for Peak Alt (°) column — e.g. `27.892918595366687` instead of `28°`. The cell renderer in `generate_plan_pdf` hit the generic `str(row.get(col))` branch for numeric columns, bypassing any formatting.
+
+### Fix
+Added an explicit `elif col == 'Peak Alt (°)':` branch in the PDF cell renderer loop (inside `generate_plan_pdf`) that formats the value as `f"{float(val):.0f}°"`. Falls back to `—` on exception. Matches the `%.0f°` format already used in the on-screen column config.
+
+### Rule
+Any numeric column added to `generate_plan_pdf` needs an explicit formatting branch in the cell renderer loop — the generic `str()` fallback does not apply Python format specs.
+
+---
+
 ## 2026-03-01 — UI polish: step numbering, Peak Alt exports, Peak Alt (session) overview column
 
 **Branch:** `feature/peak-alt-session-column` (10 commits)
