@@ -102,3 +102,58 @@ def test_check_row_observability_does_not_raise_with_az_filter():
         sc, "Visible", loc, times, None, [], 5.0, 10, 90, {"N"}, 0
     )
     assert isinstance(obs, bool)
+
+
+import pandas as pd
+from datetime import datetime, timezone
+from backend.app_logic import _sort_df_like_chart, build_night_plan
+
+
+def _make_sort_df():
+    """Minimal DataFrame with Status + datetime columns."""
+    t1 = datetime(2025, 6, 15, 22, 0, tzinfo=timezone.utc)
+    t2 = datetime(2025, 6, 15, 23, 0, tzinfo=timezone.utc)
+    t3 = datetime(2025, 6, 16,  0, 0, tzinfo=timezone.utc)
+    return pd.DataFrame({
+        "Name": ["A", "B", "C"],
+        "Status": ["Visible", "Visible", "Always Up (Circumpolar)"],
+        "_rise_datetime":    [t1, t2, None],
+        "_set_datetime":     [t3, t3, None],
+        "_transit_datetime": [t2, t1, t1],
+    })
+
+
+def test_sort_df_earliest_rise_always_up_at_bottom():
+    df = _make_sort_df()
+    result = _sort_df_like_chart(df, "Earliest Rise")
+    assert result["Name"].tolist()[-1] == "C"  # Always Up must be last
+
+def test_sort_df_earliest_set_always_up_at_bottom():
+    df = _make_sort_df()
+    result = _sort_df_like_chart(df, "Earliest Set")
+    assert result["Name"].tolist()[-1] == "C"
+
+def test_sort_df_priority_order():
+    df = pd.DataFrame({
+        "Name": ["X", "Y", "Z"],
+        "Status": ["Visible", "Visible", "Visible"],
+        "Priority": ["LOW", "URGENT", "HIGH"],
+    })
+    result = _sort_df_like_chart(df, "Priority Order", priority_col="Priority")
+    assert result["Name"].tolist() == ["Y", "Z", "X"]   # URGENT, HIGH, LOW
+
+def test_sort_df_none_returns_unchanged():
+    df = _make_sort_df()
+    result = _sort_df_like_chart(df, None)
+    assert result["Name"].tolist() == ["A", "B", "C"]
+
+def test_build_night_plan_sort_by_transit_b_first():
+    df = _make_sort_df().iloc[:2].copy()  # A and B only
+    result = build_night_plan(df, sort_by="transit")
+    # B transits at t1 (22:00), A at t2 (23:00) — B should be first
+    assert result["Name"].tolist()[0] == "B"
+
+def test_build_night_plan_returns_copy_not_original():
+    df = _make_sort_df().iloc[:2].copy()
+    result = build_night_plan(df, sort_by="set")
+    assert result is not df  # must be a copy

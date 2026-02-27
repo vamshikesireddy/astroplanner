@@ -65,6 +65,7 @@ CONFIG = {
 from backend.app_logic import (
     _AZ_OCTANTS, _AZ_LABELS, _AZ_CAPTIONS, az_in_selected,
     get_moon_status, _check_row_observability,
+    _sort_df_like_chart, build_night_plan,
 )
 
 
@@ -322,47 +323,6 @@ def plot_visibility_timeline(df, obs_start=None, obs_end=None, default_sort_labe
     return sort_option
 
 
-def _sort_df_like_chart(df, sort_option, priority_col=None):
-    """Reorder a DataFrame to match the Gantt chart sort selection.
-
-    For Earliest Rise/Set/Transit, 'Always Up' objects are pushed to the bottom
-    (sorted by transit among themselves), matching the Gantt chart behaviour.
-    """
-    if not sort_option:
-        return df
-
-    _au = df['Status'].str.contains('Always Up', na=False) if 'Status' in df.columns else pd.Series(False, index=df.index)
-
-    if sort_option == "Earliest Rise" and '_rise_datetime' in df.columns:
-        reg = df[~_au].sort_values('_rise_datetime', ascending=True, na_position='last')
-        au = df[_au].sort_values('_transit_datetime', ascending=True, na_position='last') if '_transit_datetime' in df.columns else df[_au]
-        return pd.concat([reg, au])
-    elif sort_option == "Earliest Set" and '_set_datetime' in df.columns:
-        reg = df[~_au].sort_values('_set_datetime', ascending=True, na_position='last')
-        au = df[_au].sort_values('_transit_datetime', ascending=True, na_position='last') if '_transit_datetime' in df.columns else df[_au]
-        return pd.concat([reg, au])
-    elif sort_option == "Earliest Transit" and '_transit_datetime' in df.columns:
-        reg = df[~_au].sort_values('_transit_datetime', ascending=True, na_position='last')
-        au = df[_au].sort_values('_transit_datetime', ascending=True, na_position='last')
-        return pd.concat([reg, au])
-    elif priority_col and priority_col in df.columns:
-        _PRI_RANK = {"URGENT": 0, "HIGH": 1, "LOW": 2}
-
-        def _rank(val):
-            v = str(val).upper() if pd.notna(val) else ""
-            for k, r in _PRI_RANK.items():
-                if k in v:
-                    return r
-            if v.strip():
-                return 3
-            return 4
-
-        tmp = df.copy()
-        tmp['_sort_rank'] = tmp[priority_col].apply(_rank)
-        return tmp.sort_values('_sort_rank', kind='mergesort').drop(columns=['_sort_rank'])
-    else:
-        return df
-
 
 # GITHUB_TOKEN must be a fine-grained PAT with:
 #   - Contents: Read and Write  (to push YAML file updates)
@@ -434,27 +394,6 @@ def _add_peak_alt_session(df, location, win_start_tz, win_end_tz, n_steps=5):
     df['_peak_alt_session'] = peaks
     return df
 
-
-def build_night_plan(df_obs, sort_by="set"):
-    """Build a time-sorted target list for tonight.
-
-    Args:
-        df_obs:   Observable targets DataFrame.
-        sort_by:  'set' (default) sorts by _set_datetime;
-                  'transit' sorts by _transit_datetime.
-                  Ascending in both cases, NaT last.
-
-    Returns the sorted DataFrame. Priority colour-coding is handled by the caller.
-    """
-    df = df_obs.copy()
-
-    sort_col = '_transit_datetime' if sort_by == 'transit' else '_set_datetime'
-    if sort_col in df.columns:
-        df['_time_sort'] = pd.to_datetime(df[sort_col], errors='coerce', utc=True)
-        df = df.sort_values('_time_sort', ascending=True, na_position='last')
-        df = df.drop(columns=['_time_sort'])
-
-    return df
 
 
 def generate_plan_pdf(df_plan, night_start, night_end,
