@@ -1771,7 +1771,7 @@ with st.expander("ℹ️ How to Use"):
     *   Click **🚀 Calculate Visibility**.
     *   View the **Altitude Chart** to see how the object moves across your window.
     *   Check **Moon separation** at each time step in the detailed data table.
-    *   **Download CSV** for minute-by-minute data.
+    *   **Download CSV** for 10-minute step data.
     """)
 
 def _init_session_state(now):
