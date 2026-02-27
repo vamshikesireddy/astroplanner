@@ -1,5 +1,5 @@
 pandas
-scrapling[fetchers]
+scrapling[fetchers]>=0.4.1
 geocoder
 pytz
 timezonefinder
