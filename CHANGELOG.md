@@ -4,9 +4,40 @@ Bug fixes, discoveries, and notable changes. See CLAUDE.md for architecture and 
 
 ---
 
-## 2026-02-27 — JPL name resolution: all bugs fixed, 46 tests pass
+## 2026-02-27 — JPL name resolution: all bugs fixed, 46 tests pass (final)
 
-**Branch:** `feature/jpl-name-resolution`
+**Branch:** `feature/jpl-name-resolution` — 25 commits, merged to main
+
+### Additional runtime bugs fixed (session 2, 2026-02-27)
+
+**Bug: JPL Horizons rate-limits 8 parallel workers → ~50% of batch queries fail**
+- `ThreadPoolExecutor(max_workers=8)` fires simultaneous HTTP requests to JPL Horizons.
+- JPL rejects some under load even though each ID resolves fine when called sequentially.
+- Symptom: random ~50% failure on every fresh page load; diagnose_jpl.py (sequential) always passed 41/41.
+- Fix 1: Reduced `max_workers` from 8 → 3 (both comets and asteroids).
+- Fix 2: Added one retry with 1.5s backoff inside `_fetch()`. On first failure: sleep → retry once. If retry also fails, falls through to existing SBDB fallback. Applied to both comet and asteroid `_fetch()`.
+- Rule: JPL Horizons = public rate-limited API. Never fire more than 3 concurrent requests. Always retry once before giving up.
+
+**Bug: Stale `@st.cache_data` serves old failure rows after fixes applied**
+- `get_comet_summary()`, `get_asteroid_summary()`, and `_load_jpl_overrides()` are all `@st.cache_data(ttl=3600)`.
+- Pressing "Always rerun" does NOT clear server-side cache. Only killing the process does.
+- New override entries (e.g. `"3 Juno": "3;"`) invisible to batch until cache cleared.
+- Fix: "🔄 Refresh JPL Data" button added to both Comet Admin and Asteroid Admin panels. Clears all three caches and reruns. One button clears both sections.
+- **Deferred (next iteration):** Don't cache failure stub rows at all — strip before `@st.cache_data` return, re-query fresh each render. Branch: `refactor/jpl-cache-no-stale-failures`.
+
+**Bug: Trajectory picker shows bare JPL ID instead of display name**
+- `_asteroid_jpl_id("2 Pallas")` → `"2"`. `resolve_horizons("2")` returns `("2", sc)`. Banner showed "Resolved: 2".
+- Fix: After successful resolve, if user selected from the list (not Custom entry), `name = selected_target`. Applied to comet My List and asteroid trajectory pickers.
+
+### Documentation convention established
+- **CHANGELOG.md** is the canonical record for every bug, root cause, and fix. Update at end of every session.
+- **Rule:** If you encounter a bug and fix it, add it to CHANGELOG immediately with root cause + fix + rule-of-thumb. Future sessions read this before digging into code.
+
+### Deferred to next iteration
+| Item | Branch | Description |
+|------|--------|-------------|
+| Don't cache stub rows | `refactor/jpl-cache-no-stale-failures` | Strip `_resolve_error=True` rows from `@st.cache_data` return; re-query fresh each render |
+| threading.Lock in `_save_jpl_cache_entry` | — | Benign race condition; low priority |
 
 ### What was built
 Three-layer JPL ID lookup system: `jpl_id_overrides.yaml` → `jpl_id_cache.json` → name fallback (strip parenthetical / extract number / provisional passthrough). SBDB fallback when Horizons rejects the initial ID. Admin panel shows JPL failures with per-object override input and save button.
