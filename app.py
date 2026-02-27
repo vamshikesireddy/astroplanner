@@ -982,10 +982,9 @@ def _render_night_plan_builder(
         )
 
     # ── Parameters summary ─────────────────────────────────────────────
-    _win_hrs = (_win_range[1] - _win_range[0]).total_seconds() / 3600
     _summary_parts = [
         (f"Window: {_win_range[0].strftime('%b %d %H:%M')} → "
-         f"{_win_range[1].strftime('%b %d %H:%M')} ({_win_hrs:.0f} hrs)"),
+         f"{_win_range[1].strftime('%b %d %H:%M')} ({_win_hours} hrs)"),
         f"Min alt: {min_alt}°",
         f"Moon sep: ≥ {min_moon_sep}°",
     ]
@@ -1051,12 +1050,20 @@ def _render_night_plan_builder(
                         link_col,
                     )
 
+                    # Expose peak-alt column for display
+                    _peak_alt_display_col = None
+                    if '_peak_alt_window' in _scheduled.columns:
+                        _peak_alt_display_col = 'Peak Alt (°)'
+                        _scheduled = _scheduled.rename(
+                            columns={'_peak_alt_window': 'Peak Alt (°)'}
+                        )
+
                     # Build display column list
                     _plan_show = []
                     for _c in [target_col, pri_col, 'Type',
                                'Rise', 'Transit', 'Set', dur_col,
                                vmag_col, ra_col, dec_col, 'Constellation',
-                               'Status', 'Moon Sep (°)', 'Moon Status',
+                               'Status', 'Peak Alt (°)', 'Moon Sep (°)', 'Moon Status',
                                _plan_link_col]:
                         if _c and _c in _scheduled.columns and _c not in _plan_show:
                             _plan_show.append(_c)
@@ -1069,6 +1076,10 @@ def _render_night_plan_builder(
                     if dur_col and dur_col in _plan_display.columns:
                         _plan_cfg[dur_col] = st.column_config.NumberColumn(
                             dur_col, format="%d min"
+                        )
+                    if _peak_alt_display_col and _peak_alt_display_col in _plan_display.columns:
+                        _plan_cfg[_peak_alt_display_col] = st.column_config.NumberColumn(
+                            'Peak Alt (°)', format="%.0f°"
                         )
                     if 'Moon Sep (°)' in _plan_display.columns:
                         _plan_cfg['Moon Sep (°)'] = st.column_config.TextColumn("Moon Sep (°)")
@@ -2178,6 +2189,7 @@ def render_dso_section(location, start_time, duration, min_alt, max_alt, az_dirs
                         csv_filename=f"dso_{category.lower().replace(' ', '_')}_visibility.csv",
                         section_key=f"dso_{category.lower().replace(' ', '_')}",
                         duration_minutes=duration,
+                        location=location, min_alt=min_alt, min_moon_sep=min_moon_sep, az_dirs=az_dirs,
                     )
 
             with tab_filt_d:
@@ -2360,6 +2372,7 @@ def render_planet_section(location, start_time, duration, min_alt, max_alt, az_d
                             csv_filename="planets_visibility.csv",
                             section_key="planet",
                             duration_minutes=duration,
+                            location=location, min_alt=min_alt, min_moon_sep=min_moon_sep, az_dirs=az_dirs,
                         )
                 else:
                     _az_order = {d: i for i, d in enumerate(_AZ_LABELS)}
@@ -2864,6 +2877,7 @@ def render_comet_section(location, start_time, duration, min_alt, max_alt, az_di
                             csv_filename="comets_visibility.csv",
                             section_key="comet_mylist",
                             duration_minutes=duration,
+                            location=location, min_alt=min_alt, min_moon_sep=min_moon_sep, az_dirs=az_dirs,
                         )
 
                 with tab_filt_c:
@@ -3069,6 +3083,7 @@ def render_comet_section(location, start_time, duration, min_alt, max_alt, az_di
                                     csv_filename="catalog_comets_visibility.csv",
                                     section_key="comet_catalog",
                                     duration_minutes=duration,
+                                    location=location, min_alt=min_alt, min_moon_sep=min_moon_sep, az_dirs=az_dirs,
                                 )
                         with _tab_filt_cat:
                             st.caption("Comets not meeting your filters within the observation window.")
@@ -3568,6 +3583,7 @@ def render_asteroid_section(location, start_time, duration, min_alt, max_alt, az
                         csv_filename="asteroids_visibility.csv",
                         section_key="asteroid",
                         duration_minutes=duration,
+                        location=location, min_alt=min_alt, min_moon_sep=min_moon_sep, az_dirs=az_dirs,
                     )
 
             with tab_filt_a:
@@ -4192,6 +4208,7 @@ def render_cosmic_section(location, start_time, duration, min_alt, max_alt, az_d
                     csv_filename="unistellar_targets.csv",
                     section_key="cosmic",
                     duration_minutes=duration,
+                    location=location, min_alt=min_alt, min_moon_sep=min_moon_sep, az_dirs=az_dirs,
                 )
 
             st.markdown("---")
