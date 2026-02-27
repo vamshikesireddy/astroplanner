@@ -639,6 +639,11 @@ def generate_plan_pdf(df_plan, night_start, night_end,
                     cells.append(Paragraph(f"{float(row.get(col, 0)):.1f} min", cell_s))
                 except Exception:
                     cells.append(Paragraph(str(row.get(col, '')), cell_s))
+            elif col == 'Peak Alt (°)':
+                try:
+                    cells.append(Paragraph(f"{float(row.get(col, '')):.0f}°", cell_s))
+                except Exception:
+                    cells.append(Paragraph('—', cell_s))
             else:
                 cells.append(Paragraph(str(row.get(col, '') or ''), cell_s))
         data.append(cells)
