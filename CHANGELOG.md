@@ -4,6 +4,33 @@ Bug fixes, discoveries, and notable changes. See CLAUDE.md for architecture and 
 
 ---
 
+## 2026-03-01 — Docs: How to Use rewrite — steps now match in-app numbering
+
+**Commits:** `ddc6d54`, `b46a1d3`
+**Tests:** 66 pass
+
+### Problem
+The "How to Use" expander listed steps 1–4 in a different order and with different content than the in-app step headers (also 1–4), causing confusion:
+
+| How to Use said | In-app label |
+|----------------|--------------|
+| Step 2: Choose a Target | **1.** Choose Target |
+| Step 3: Calculate & Analyze | **4.** Trajectory Results |
+| Step 4: Night Plan Builder | **2.** 📅 Night Plan Builder |
+
+Step 3 of the actual flow ("Select Target for Trajectory") was missing from the guide entirely. "minute-by-minute" was also inaccurate — trajectory CSV uses 10-minute steps.
+
+### Fix
+- Sidebar setup → unnumbered `### Setup (Sidebar)` pre-step (sidebar has no in-app number)
+- Steps 1–4 now mirror in-app labels exactly: Choose Target → Night Plan Builder → Select Target for Trajectory → Trajectory Results
+- Added missing Step 3 description (Select Target for Trajectory)
+- Fixed "minute-by-minute" → "10-minute step" in Step 4 CSV bullet
+
+### Rule
+When adding or renumbering in-app step headers, update the How to Use expander at `app.py:1743` to match.
+
+---
+
 ## 2026-03-01 — Fix: Peak Alt integer formatting in night plan PDF
 
 **Commit:** `0712527`
