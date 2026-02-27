@@ -880,7 +880,7 @@ def _render_night_plan_builder(
         max_value=night_plan_end,
         value=(_slider_default_start, night_plan_end),
         step=timedelta(minutes=30),
-        format="%b %d %H:%M",
+        format="MMM DD HH:mm",
         key=f"{section_key}_win_range",
         help="Drag the handles to set the start and end of your observing session.",
     )
