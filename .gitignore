@@ -39,6 +39,9 @@ docs/plans/
 # Playwright MCP browser session files
 .playwright-mcp/
 
+# UI screenshot captures (local test artifacts, regenerated as needed)
+tests/screenshots/
+
 # Internal planning / design docs (not for public repo)
 docs/plans/
 
