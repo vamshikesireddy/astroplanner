@@ -79,3 +79,18 @@ def test_sbdb_lookup_300_with_empty_list():
     with patch("backend.sbdb.requests.get", return_value=mock_resp):
         result = sbdb_lookup("ambiguous name")
     assert result is None
+
+
+def test_sbdb_lookup_300_cascading_does_not_recurse():
+    """HTTP 300 for both original and primary_pdes → return None (depth guard)."""
+    mock_300 = MagicMock()
+    mock_300.status_code = 300
+    mock_300.json.return_value = {
+        "code": "300",
+        "list": [{"pdes": "still_ambiguous", "name": "X"}],
+    }
+    mock_300.raise_for_status.return_value = None
+
+    with patch("backend.sbdb.requests.get", return_value=mock_300):
+        result = sbdb_lookup("ambiguous")
+    assert result is None
