@@ -596,7 +596,7 @@ def _render_night_plan_builder(
                             max_value=_vmag_hi,
                             value=(_vmag_lo, _vmag_hi),
                             step=0.1,
-                            key=f"{section_key}_vmag",
+                            key=_vmag_ss_key,
                             help="Lower magnitude = brighter.",
                         )
                     else:
