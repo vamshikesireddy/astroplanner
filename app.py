@@ -1341,6 +1341,28 @@ def load_exoplanets_config():
     return read_exoplanets_config(EXOPLANETS_FILE)
 
 
+def save_exoplanets_config(config):
+    load_exoplanets_config.clear()      # invalidate cache after write
+    with open(EXOPLANETS_FILE, "w") as f:
+        yaml.dump(config, f, default_flow_style=False, allow_unicode=True)
+    token = st.secrets.get("GITHUB_TOKEN")
+    repo_name = st.secrets.get("GITHUB_REPO")
+    if token and repo_name and Github:
+        try:
+            g = Github(token)
+            repo = g.get_repo(repo_name)
+            yaml_str = yaml.dump(config, default_flow_style=False, allow_unicode=True)
+            try:
+                contents = repo.get_contents(EXOPLANETS_FILE)
+                repo.update_file(contents.path, "Update exoplanets.yaml (Admin)", yaml_str, contents.sha)
+                st.toast("✅ exoplanets.yaml pushed to GitHub")
+            except Exception:
+                repo.create_file(EXOPLANETS_FILE, "Create exoplanets.yaml (Admin)", yaml_str)
+                st.toast("✅ exoplanets.yaml created on GitHub")
+        except Exception as e:
+            st.error(f"GitHub Sync Error: {e}")  # admin panel — full error OK
+
+
 def save_asteroids_config(config):
     load_asteroids_config.clear()       # invalidate cache after write
     with open(ASTEROIDS_FILE, "w") as f:
@@ -4570,6 +4592,75 @@ def render_exoplanet_section(location, start_time, duration, min_alt, max_alt, a
             except Exception as _e:
                 st.warning(f"Could not compute trajectory: {_e}")
 
+    # Admin panel (sidebar)
+    with st.sidebar:
+        st.markdown("---")
+        with st.expander("🪐 Exoplanet Admin"):
+            admin_pass_exo = st.text_input("Admin Password", type="password", key="exoplanet_admin_pass")
+            correct_pass_exo = st.secrets.get("ADMIN_PASSWORD")
+            if correct_pass_exo and admin_pass_exo == correct_pass_exo:
+                st.subheader("🪐 Exoplanet Pending Changes")
+                _exo_pending_file_admin = os.path.join(os.path.dirname(__file__), "exoplanet_pending_requests.txt")
+                if os.path.exists(_exo_pending_file_admin):
+                    try:
+                        with open(_exo_pending_file_admin, "r", encoding="utf-8") as _f:
+                            _exo_pending_admin = json.load(_f)
+                    except Exception:
+                        _exo_pending_admin = []
+                    if _exo_pending_admin:
+                        for _i, _change in enumerate(_exo_pending_admin):
+                            _col1, _col2, _col3 = st.columns([3, 1, 1])
+                            _col1.markdown(f"`{_change['change']}` — **{_change['designation']}**")
+                            if _col2.button("✅ Accept", key=f"exo_accept_{_i}"):
+                                _exo_cfg_admin = load_exoplanets_config()
+                                if _change["change"] == "ADDED":
+                                    _exo_cfg_admin.setdefault("active", []).append(_change["designation"])
+                                elif _change["change"] == "REMOVED":
+                                    _exo_cfg_admin["active"] = [
+                                        p for p in _exo_cfg_admin.get("active", [])
+                                        if p.strip().lower() != _change["designation"].strip().lower()
+                                    ]
+                                elif _change["change"] == "PRIORITY_ADDED":
+                                    _exo_cfg_admin.setdefault("priorities", {})[_change["designation"]] = "⭐ PRIORITY"
+                                elif _change["change"] == "PRIORITY_REMOVED":
+                                    _exo_cfg_admin.get("priorities", {}).pop(_change["designation"], None)
+                                save_exoplanets_config(_exo_cfg_admin)
+                                _exo_pending_admin.pop(_i)
+                                with open(_exo_pending_file_admin, "w", encoding="utf-8") as _f:
+                                    json.dump(_exo_pending_admin, _f, indent=2)
+                                st.rerun()
+                            if _col3.button("❌ Reject", key=f"exo_reject_{_i}"):
+                                _exo_pending_admin.pop(_i)
+                                with open(_exo_pending_file_admin, "w", encoding="utf-8") as _f:
+                                    json.dump(_exo_pending_admin, _f, indent=2)
+                                st.rerun()
+                    else:
+                        st.success("No pending exoplanet changes.")
+                else:
+                    st.info("No exoplanet pending requests file found.")
+
+
+# ── Exoplanet pending-request detection (once per session) ──────────────────
+_exo_pending_file = os.path.join(os.path.dirname(__file__), "exoplanet_pending_requests.txt")
+if not st.session_state.get("_exo_pending_checked"):
+    try:
+        import json as _json
+        from scripts.check_unistellar_exoplanet_priorities import diff_exoplanet_priorities
+        _exo_scraped_rt  = scrape_unistellar_exoplanets()
+        _exo_active_rt   = _exo_scraped_rt.get("active", [])
+        _exo_priority_rt = _exo_scraped_rt.get("priority", [])
+        _exo_cfg_rt      = load_exoplanets_config()
+        _yaml_active_rt    = [str(p).strip() for p in _exo_cfg_rt.get("active", [])]
+        _yaml_priorities_rt = _exo_cfg_rt.get("priorities", {}) or {}
+        _exo_changes_rt = diff_exoplanet_priorities(
+            _exo_active_rt, _exo_priority_rt, _yaml_active_rt, _yaml_priorities_rt
+        )
+        if _exo_changes_rt:
+            with open(_exo_pending_file, "w", encoding="utf-8") as _f:
+                _json.dump(_exo_changes_rt, _f, indent=2)
+    except Exception:
+        pass
+    st.session_state["_exo_pending_checked"] = True
 
 if target_mode == "Star/Galaxy/Nebula (SIMBAD)":
     name, sky_coord, resolved, _ = render_dso_section(
