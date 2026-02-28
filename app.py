@@ -412,6 +412,11 @@ def generate_plan_pdf(df_plan, night_start, night_end,
     cell_s  = ParagraphStyle('c', parent=styles['Normal'], fontSize=7)
     link_s  = ParagraphStyle('l', parent=styles['Normal'], fontSize=7,
                               textColor=rl_colors.HexColor('#1565C0'))
+    name_link_s = ParagraphStyle(
+        'nl', parent=styles['Normal'], fontSize=7,
+        textColor=rl_colors.HexColor('#1565C0'),
+        underlineWidth=0.5,
+    )
 
     elems = [
         Paragraph("Night Observation Plan", title_s),
@@ -435,32 +440,39 @@ def generate_plan_pdf(df_plan, night_start, night_end,
     for c in [target_col, pri_col, 'Type',
               'Rise', 'Transit', 'Set', dur_col,
               vmag_col, ra_col, dec_col, 'Constellation',
-              'Status', 'Peak Alt (°)', 'Moon Sep (°)', 'Moon Status', _link_col]:
+              'Status', 'Peak Alt (°)', 'Moon Sep (°)', 'Moon Status']:
         if c and c in df_plan.columns and c not in display_cols:
             display_cols.append(c)
 
     # Column widths in cm — tuned to fit landscape A4 (~27 cm usable)
     _W = {
         '#': 0.6,
-        target_col: 2.8, pri_col: 1.5, 'Type': 1.2,
+        target_col: 3.2, pri_col: 1.5, 'Type': 1.2,
         'Rise': 1.6, 'Transit': 1.6, 'Set': 1.6,
         dur_col: 1.2, vmag_col: 1.0, ra_col: 1.9, dec_col: 1.7,
-        'Constellation': 1.6, 'Status': 1.7, 'Peak Alt (°)': 1.2, 'Moon Sep (°)': 1.6, 'Moon Status': 1.4, _link_col: 5.0,
+        'Constellation': 1.6, 'Status': 1.7, 'Peak Alt (°)': 1.2, 'Moon Sep (°)': 1.6, 'Moon Status': 1.4,
     }
     col_widths = [_W.get(c, 1.5) * cm for c in display_cols]
 
     # Header row
-    data = [[Paragraph('Deep Link' if c == _link_col else c, hdr_s)
-             for c in display_cols]]
+    data = [[Paragraph(c, hdr_s) for c in display_cols]]
 
     for i, (_, row) in enumerate(df_plan.iterrows()):
         cells = []
         for col in display_cols:
             if col == '#':
                 cells.append(Paragraph(str(i + 1), cell_s))
-            elif col == _link_col:
-                url = str(row.get(col, '') or '')
-                cells.append(Paragraph(url if url else '—', link_s))
+            elif col == target_col:
+                name_val = str(row.get(col, '') or '')
+                url = str(row.get(_link_col, '') or '') if _link_col else ''
+                if url:
+                    safe_url = url.replace('&', '&amp;')
+                    cells.append(Paragraph(
+                        f'<link href="{safe_url}">{name_val}</link>',
+                        name_link_s,
+                    ))
+                else:
+                    cells.append(Paragraph(name_val, cell_s))
             elif col == dur_col:
                 try:
                     cells.append(Paragraph(f"{float(row.get(col, 0)):.1f} min", cell_s))
