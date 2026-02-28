@@ -890,7 +890,8 @@ def _render_night_plan_builder(
                         _plan_cfg['Moon Status'] = st.column_config.TextColumn("Moon Status")
                     if _plan_link_col and _plan_link_col in _plan_display.columns:
                         _plan_cfg[_plan_link_col] = st.column_config.LinkColumn(
-                            "🔭 Open", display_text="🔭 Open"
+                            "DeepLink", display_text="🔭 Open",
+                            help="Tap on your phone or tablet to open this target directly in the Unistellar app. On a laptop it opens a new browser tab.",
                         )
 
                     # Priority row colouring
@@ -4053,7 +4054,8 @@ def render_cosmic_section(location, start_time, duration, min_alt, max_alt, az_d
                 col_config = dict(_MOON_SEP_COL_CONFIG)
                 if link_col and link_col in final_table.columns:
                     col_config[link_col] = st.column_config.LinkColumn(
-                        "🔭 Open", display_text="🔭 Open"
+                        "DeepLink", display_text="🔭 Open",
+                        help="Tap on your phone or tablet to open this target directly in the Unistellar app. On a laptop it opens a new browser tab.",
                     )
                 if dur_col and dur_col in final_table.columns:
                     col_config[dur_col] = st.column_config.NumberColumn(
