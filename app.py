@@ -2787,15 +2787,17 @@ def render_comet_section(location, start_time, duration, min_alt, max_alt, az_di
                         st.session_state["_cat_df"] = _df_cat
                         st.session_state["_cat_df_lat"] = lat
                         st.session_state["_cat_df_lon"] = lon
+                        st.session_state["_cat_df_start"] = start_time.isoformat()
                     else:
                         st.warning("Set your location in the sidebar first.")
 
                 if "_cat_df" in st.session_state:
                     if (st.session_state.get("_cat_df_lat") != lat
-                            or st.session_state.get("_cat_df_lon") != lon):
-                        # Location changed since this was calculated — clear stale data
+                            or st.session_state.get("_cat_df_lon") != lon
+                            or st.session_state.get("_cat_df_start") != start_time.isoformat()):
+                        # Location or time changed since this was calculated — clear stale data
                         del st.session_state["_cat_df"]
-                        st.info("Location changed. Click **Calculate Visibility** to refresh the catalog.")
+                        st.info("Location or time changed. Click **Calculate Visibility** to refresh the catalog.")
                     else:
                         _df_cat = st.session_state["_cat_df"]
                         if not _df_cat.empty:
