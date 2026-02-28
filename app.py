@@ -2059,7 +2059,7 @@ def render_planet_section(location, start_time, duration, min_alt, max_alt, az_d
         "Pluto": "999"
     }
 
-    if lat is None or lon is None:
+    if lat is None or lon is None or (lat == 0.0 and lon == 0.0):
         st.info("Set location in sidebar to see visibility summary for all planets.")
     else:
         df_planets = get_planet_summary(lat, lon, start_time)
@@ -3680,13 +3680,15 @@ def render_cosmic_section(location, start_time, duration, min_alt, max_alt, az_d
         return scrape_unistellar_table()
 
     # Check location first
-    if lat is None or lon is None:
+    if lat is None or lon is None or (lat == 0.0 and lon == 0.0):
         status_msg.empty()
         st.warning("⚠️ Please set your **Latitude** and **Longitude** in the sidebar first. We need this to calculate Rise/Set times for the targets.")
         df_alerts = None
     else:
         df_alerts = get_scraped_data()
         status_msg.empty()
+        if df_alerts is None:
+            st.warning("⚠️ Could not load Cosmic Cataclysm targets — network issue or site unavailable. Try again shortly.")
 
     # Inject manual events from targets.yaml into df_alerts
     if df_alerts is not None:
@@ -4121,7 +4123,7 @@ elif target_mode == "Manual RA/Dec":
 st.header("4. Trajectory Results")
 
 if st.button("🚀 Calculate Visibility", type="primary", disabled=not resolved):
-    if lat is None or lon is None:
+    if lat is None or lon is None or (lat == 0.0 and lon == 0.0):
         st.error("Please enter a valid location (Latitude & Longitude) in the sidebar.")
         st.stop()
 
@@ -4160,18 +4162,16 @@ if st.button("🚀 Calculate Visibility", type="primary", disabled=not resolved)
         current_moon_sep = _ms_min
         if _ms_min < min_moon_sep:
             st.warning(f"⚠️ **Moon Warning:** Target gets as close as {_ms_min:.1f}° to the Moon during this window (Limit: {min_moon_sep}°).")
-        if 'moon_illum' in locals():
-            status = get_moon_status(moon_illum, _ms_min)
-            moon_status_text = f"{_ms_min:.1f}°–{_ms_max:.1f}° ({status})"
+        status = get_moon_status(moon_illum, _ms_min)
+        moon_status_text = f"{_ms_min:.1f}°–{_ms_max:.1f}° ({status})"
     elif moon_loc and sky_coord:
         # Fallback to single start-time value if trajectory Moon Sep unavailable
         sep = moon_sep_deg(sky_coord, moon_loc)
         current_moon_sep = sep
         if sep < min_moon_sep:
             st.warning(f"⚠️ **Moon Warning:** Target is {sep:.1f}° from the Moon (Limit: {min_moon_sep}°).")
-        if 'moon_illum' in locals():
-            status = get_moon_status(moon_illum, sep)
-            moon_status_text = f"{sep:.1f}° ({status})"
+        status = get_moon_status(moon_illum, sep)
+        moon_status_text = f"{sep:.1f}° ({status})"
 
     # --- Observational Filter Check ---
     # Check if any point in the trajectory meets the criteria
