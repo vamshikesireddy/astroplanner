@@ -656,7 +656,8 @@ def _render_night_plan_builder(
     _last_key = f"{section_key}_last_start"
     _last_dur_key = f"{section_key}_last_dur"
     if (st.session_state.get(_last_key) != _st_rounded
-            or st.session_state.get(_last_dur_key) != duration_minutes):
+            or st.session_state.get(_last_dur_key) != duration_minutes
+            or not isinstance(st.session_state.get(_ss_key), (tuple, list))):
         st.session_state[_last_key] = _st_rounded
         st.session_state[_last_dur_key] = duration_minutes
         st.session_state[_ss_key] = (_slider_default_start, _slider_default_end)
