@@ -1723,7 +1723,9 @@ st.sidebar.markdown("""
 
 # Calculate Moon Info
 moon_loc = None
-if lat is not None and lon is not None:
+moon_illum = 0
+location = None
+if lat is not None and lon is not None and not (lat == 0.0 and lon == 0.0):
     try:
         location = EarthLocation(lat=lat*u.deg, lon=lon*u.deg)
         t_moon = Time(start_time)
@@ -2779,7 +2781,7 @@ def render_comet_section(location, start_time, duration, min_alt, max_alt, az_di
                         st.markdown(f"- {_c['designation']}  *(q={_c.get('q', 0):.2f} AU{_H_str})*")
 
                 if st.button("\U0001f52d Calculate Visibility for Filtered Comets", key="cat_calc_btn"):
-                    if lat is not None and lon is not None:
+                    if lat is not None and lon is not None and not (lat == 0.0 and lon == 0.0):
                         _cat_names = tuple(_c["designation"] for _c in filtered_cat)
                         _df_cat = get_comet_summary(lat, lon, start_time, _cat_names)
                         st.session_state["_cat_df"] = _df_cat
