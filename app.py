@@ -1861,7 +1861,7 @@ def render_dso_section(location, start_time, duration, min_alt, max_alt, az_dirs
     if lat is None or lon is None or (lat == 0.0 and lon == 0.0):
         _location_needed()
         st.markdown("---")
-        with st.expander("2. 📅 Night Plan Builder", expanded=False):
+        with st.expander("2\\. 📅 Night Plan Builder", expanded=False):
             _location_needed()
     elif dso_list:
         dso_tuple = tuple(
@@ -1942,7 +1942,7 @@ def render_dso_section(location, start_time, duration, min_alt, max_alt, az_dirs
                 display_dso_table(_df_sorted_d)
                 st.caption("🌙 **Moon Sep**: angular separation range across the observation window (min°–max°). Computed at start, mid, and end of window.")
                 st.markdown("---")
-                with st.expander("2. 📅 Night Plan Builder", expanded=True):
+                with st.expander("2\\. 📅 Night Plan Builder", expanded=True):
                     _render_night_plan_builder(
                         df_obs=df_obs_d,
                         start_time=start_time,
@@ -2069,7 +2069,7 @@ def render_planet_section(location, start_time, duration, min_alt, max_alt, az_d
     if lat is None or lon is None or (lat == 0.0 and lon == 0.0):
         _location_needed()
         st.markdown("---")
-        with st.expander("2. 📅 Night Plan Builder", expanded=False):
+        with st.expander("2\\. 📅 Night Plan Builder", expanded=False):
             _location_needed()
     else:
         df_planets = get_planet_summary(lat, lon, start_time)
@@ -2135,7 +2135,7 @@ def render_planet_section(location, start_time, duration, min_alt, max_alt, az_d
                     st.dataframe(_df_sorted_p[show_p], hide_index=True, width="stretch", column_config=_MOON_SEP_COL_CONFIG)
                     st.caption("🌙 **Moon Sep**: angular separation range across the observation window (min°–max°). Computed at start, mid, and end of window.")
                     st.markdown("---")
-                    with st.expander("2. 📅 Night Plan Builder", expanded=True):
+                    with st.expander("2\\. 📅 Night Plan Builder", expanded=True):
                         _render_night_plan_builder(
                             df_obs=df_obs_p,
                             start_time=start_time,
@@ -2515,7 +2515,7 @@ def render_comet_section(location, start_time, duration, min_alt, max_alt, az_di
         if lat is None or lon is None or (lat == 0.0 and lon == 0.0):
             _location_needed()
             st.markdown("---")
-            with st.expander("2. 📅 Night Plan Builder", expanded=False):
+            with st.expander("2\\. 📅 Night Plan Builder", expanded=False):
                 _location_needed()
         elif active_comets:
             df_comets = get_comet_summary(lat, lon, start_time, tuple(active_comets))
@@ -2645,7 +2645,7 @@ def render_comet_section(location, start_time, duration, min_alt, max_alt, az_di
                         unsafe_allow_html=True
                     )
                     st.markdown("---")
-                    with st.expander("2. 📅 Night Plan Builder", expanded=True):
+                    with st.expander("2\\. 📅 Night Plan Builder", expanded=True):
                         _render_night_plan_builder(
                             df_obs=df_obs_c,
                             start_time=start_time,
@@ -2866,7 +2866,7 @@ def render_comet_section(location, start_time, duration, min_alt, max_alt, az_di
                                     hide_index=True, width="stretch", column_config=_MOON_SEP_COL_CONFIG
                                 )
                                 st.markdown("---")
-                                with st.expander("2. 📅 Night Plan Builder", expanded=True):
+                                with st.expander("2\\. 📅 Night Plan Builder", expanded=True):
                                     _render_night_plan_builder(
                                         df_obs=_df_obs_cat,
                                         start_time=start_time,
@@ -3268,7 +3268,7 @@ def render_asteroid_section(location, start_time, duration, min_alt, max_alt, az
     if lat is None or lon is None or (lat == 0.0 and lon == 0.0):
         _location_needed()
         st.markdown("---")
-        with st.expander("2. 📅 Night Plan Builder", expanded=False):
+        with st.expander("2\\. 📅 Night Plan Builder", expanded=False):
             _location_needed()
     elif active_asteroids:
         df_asteroids = get_asteroid_summary(lat, lon, start_time, tuple(active_asteroids))
@@ -3393,7 +3393,7 @@ def render_asteroid_section(location, start_time, duration, min_alt, max_alt, az
                     unsafe_allow_html=True
                 )
                 st.markdown("---")
-                with st.expander("2. 📅 Night Plan Builder", expanded=True):
+                with st.expander("2\\. 📅 Night Plan Builder", expanded=True):
                     _render_night_plan_builder(
                         df_obs=df_obs_a,
                         start_time=start_time,
@@ -4026,7 +4026,7 @@ def render_cosmic_section(location, start_time, duration, min_alt, max_alt, az_d
 
             # ── Night Plan Builder ─────────────────────────────────────────────
             st.markdown("---")
-            with st.expander("2. 📅 Night Plan Builder", expanded=True):
+            with st.expander("2\\. 📅 Night Plan Builder", expanded=True):
                 _render_night_plan_builder(
                     df_obs=df_obs,
                     start_time=start_time,
@@ -4080,7 +4080,7 @@ def render_cosmic_section(location, start_time, duration, min_alt, max_alt, az_d
     # Sections 2 & 3 placeholders — shown whenever the data block above didn't render them
     if df_alerts is None or df_alerts.empty:
         st.markdown("---")
-        with st.expander("2. 📅 Night Plan Builder", expanded=False):
+        with st.expander("2\\. 📅 Night Plan Builder", expanded=False):
             _location_needed()
         st.markdown("---")
         st.subheader("3. Select Target for Trajectory")
