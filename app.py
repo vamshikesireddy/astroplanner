@@ -523,6 +523,54 @@ def generate_plan_pdf(df_plan, night_start, night_end,
     return buf.getvalue()
 
 
+def _df_to_cosmic_xlsx(df, name_col, link_col):
+    """Return xlsx bytes where name_col cells are hyperlinks to link_col URLs.
+    The link_col is dropped from the output. Returns None if openpyxl unavailable."""
+    try:
+        import openpyxl
+        from openpyxl.styles import Font
+        import io as _io
+    except ImportError:
+        return None
+
+    # Drop internal _ columns and the raw link column from export
+    drop_cols = [c for c in df.columns if c.startswith('_')]
+    if link_col and link_col in df.columns:
+        drop_cols.append(link_col)
+    df_out = df.drop(columns=drop_cols, errors='ignore').copy()
+
+    wb = openpyxl.Workbook()
+    ws = wb.active
+
+    # Header row
+    ws.append(df_out.columns.tolist())
+
+    # Find which column index holds the name (1-based for openpyxl)
+    cols_list = df_out.columns.tolist()
+    name_idx = cols_list.index(name_col) + 1 if name_col in cols_list else None
+
+    # Build a lookup: row position -> URL (from original df, aligned by index)
+    url_lookup = {}
+    if link_col and link_col in df.columns:
+        for pos, (_, row) in enumerate(df.iterrows(), start=2):  # row 1 = header
+            url_val = str(row.get(link_col, '') or '')
+            if url_val:
+                url_lookup[pos] = url_val
+
+    # Data rows
+    for row_pos, (_, row) in enumerate(df_out.iterrows(), start=2):
+        ws.append([str(v) if v is not None else '' for v in row.tolist()])
+        if name_idx and row_pos in url_lookup:
+            cell = ws.cell(row=row_pos, column=name_idx)
+            cell.hyperlink = url_lookup[row_pos]
+            cell.font = Font(color='0563C1', underline='single')
+
+    buf = _io.BytesIO()
+    wb.save(buf)
+    buf.seek(0)
+    return buf.getvalue()
+
+
 def _render_night_plan_builder(
     df_obs, start_time, night_plan_start, night_plan_end, local_tz,
     target_col="Name", ra_col="RA", dec_col="Dec",
