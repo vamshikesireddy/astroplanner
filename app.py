@@ -2154,6 +2154,8 @@ def render_planet_section(location, start_time, duration, min_alt, max_alt, az_d
                     show_filt_p = [c for c in ["Name", "filter_reason", "Rise", "Transit", "Set", "RA", "_dec_deg", "Status"] if c in df_filt_p.columns]
                     st.dataframe(df_filt_p[show_filt_p], hide_index=True, width="stretch", column_config=_MOON_SEP_COL_CONFIG)
 
+    st.markdown("---")
+    st.subheader("3. Select Planet for Trajectory")
     selected_target = st.selectbox("Select a Planet", list(planet_map.keys()))
 
     # Use JPL Horizons IDs to avoid ambiguity (e.g. Mercury vs Mercury Barycenter)
