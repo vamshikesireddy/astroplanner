@@ -4,6 +4,43 @@ Bug fixes, discoveries, and notable changes. See CLAUDE.md for architecture and 
 
 ---
 
+## 2026-03-01 — Feature: Cosmic section deep link UX improvements
+
+**Branch:** `feature/cosmic-deeplink-ux`
+**Commits:** c072e6b, b60e0d1, 368cfc0, 668d685, 529fe6f, 75dc6cf, 2cc8fcf
+**Tests:** 96 pass
+
+### Problem
+The `unistellar://` deep link in the Cosmic Cataclysm section was displayed as raw, unclickable text in all surfaces (table, PDF, CSV). Clicking it from a phone/iPad could not open the Unistellar app; the user had to copy and paste the URL manually.
+
+### Changes
+
+**Surface 1 — Streamlit table (overview + Night Plan Builder)**
+- Changed `TextColumn("Deep Link")` → `LinkColumn("DeepLink", display_text="🔭 Open")` in both `display_styled_table` and `_render_night_plan_builder`
+- Column header is now `DeepLink`; cells show a tappable `🔭 Open` button
+- Added `help=` tooltip: *"Tap on your phone or tablet to open this target directly in the Unistellar app. On a laptop it opens a new browser tab."*
+- On phone/iPad: tap opens Unistellar app with coordinates pre-filled. On laptop: harmlessly opens a new browser tab (expected; browser controls custom scheme behaviour — not something we can change)
+
+**Surface 2 — PDF export**
+- Removed the raw URL column from the PDF entirely
+- The target `Name` column now renders as a blue underlined ReportLab hyperlink: `<link href="unistellar://...">Name</link>`
+- `&` in the URL is escaped to `&amp;` for XML safety
+- `target_col` width bumped 2.8 cm → 3.2 cm to use the recovered space
+- New `name_link_s` ParagraphStyle for hyperlinked name cells (blue `#1565C0`, underlineWidth 0.5)
+
+**Surface 3 — Export replaces CSV with XLSX for Cosmic only**
+- Added `_df_to_cosmic_xlsx(df, name_col, link_col) → bytes` helper using `openpyxl`
+- Drops `_`-prefixed internal columns and the raw Link column from output
+- Sets `Name` cells as `openpyxl` hyperlinks with blue underlined font (`Font(color='0563C1', underline='single')`)
+- "All Alerts" download: `(CSV)` → `(XLSX)` when Cosmic section
+- "Download Plan" download: `(CSV)` → `(XLSX)` when Cosmic section
+- Both buttons fall back to original CSV behaviour for all other sections (DSO/Planet/Comet/Asteroid unaffected)
+- Added `openpyxl` to `requirements.txt`
+
+**Rule:** For custom URI scheme deep links in Streamlit: use `LinkColumn` with `display_text` for a clean label — the raw URL stays in the DataFrame but is hidden from all display surfaces (table, PDF, xlsx). On desktop the link is harmless; on mobile it works correctly.
+
+---
+
 ## 2026-03-01 — Fix: location guard consistency + UX skeleton + markdown list label bug
 
 **Branch:** `fix/location-guard-consistency`
