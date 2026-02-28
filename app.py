@@ -4122,11 +4122,11 @@ elif target_mode == "Manual RA/Dec":
 # ---------------------------
 st.header("4. Trajectory Results")
 
-if st.button("🚀 Calculate Visibility", type="primary", disabled=not resolved):
-    if lat is None or lon is None or (lat == 0.0 and lon == 0.0):
-        st.error("Please enter a valid location (Latitude & Longitude) in the sidebar.")
-        st.stop()
+_no_location = lat is None or lon is None or (lat == 0.0 and lon == 0.0)
+if _no_location:
+    st.info("📍 Set your location in the sidebar before calculating visibility.")
 
+if st.button("🚀 Calculate Visibility", type="primary", disabled=not resolved or _no_location):
     location = EarthLocation(lat=lat*u.deg, lon=lon*u.deg)
     
     ephem_coords = None
