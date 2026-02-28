@@ -4,6 +4,38 @@ Bug fixes, discoveries, and notable changes. See CLAUDE.md for architecture and 
 
 ---
 
+## 2026-03-01 — Hotfixes: Cosmic deep link post-merge fixes
+
+**Commits:** 770cb4d, 29f1721, 88f62d3 (direct to main)
+**Tests:** 96 pass
+
+### PDF note paragraph — introduced then reverted
+
+Added a blue note paragraph below the PDF table ("Target names are clickable deep links").
+First attempt used `💡` emoji → crashed `doc.build()` because ReportLab's built-in Helvetica
+font only supports Latin-1; emoji is U+1F4A1 (outside Latin-1 range).
+Fixed emoji → `*` but user preferred clean state; reverted entirely.
+**Rule:** Never use emojis in ReportLab `Paragraph` text with default Helvetica/Times fonts.
+Use ASCII (`*`, `-`, `>`) only. Emoji crashes `doc.build()` silently (exception propagates past
+the try/except which only guards the import block, not the build).
+
+### XLSX deep link approach — switched to =HYPERLINK() formula
+
+`cell.hyperlink` (openpyxl relationship attribute) is not followed by Google Sheets.
+Switched to `=HYPERLINK("unistellar://...", "Name")` formula.
+
+**Known limitation — Google Sheets mobile blocks custom URI schemes:**
+Even with `=HYPERLINK()`, Google Sheets on mobile selects the cell on tap and does not
+delegate `unistellar://` to the OS. Sheets only opens `http://` and `https://` links from
+HYPERLINK formulas. This is a hard platform restriction — no xlsx formula can bypass it.
+
+**Final state (kept as-is):**
+- XLSX works in Excel desktop: `=HYPERLINK()` formula navigates correctly
+- XLSX in Google Sheets mobile: cell is blue/underlined but tap does not open Unistellar
+- For mobile deep link interaction: use the Streamlit table `🔭 Open` button (works) or the PDF (works)
+
+---
+
 ## 2026-03-01 — Feature: Cosmic section deep link UX improvements
 
 **Branch:** `feature/cosmic-deeplink-ux`
