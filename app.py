@@ -1860,6 +1860,9 @@ def render_dso_section(location, start_time, duration, min_alt, max_alt, az_dirs
     # --- Batch Visibility Table ---
     if lat is None or lon is None or (lat == 0.0 and lon == 0.0):
         _location_needed()
+        st.markdown("---")
+        with st.expander("2. 📅 Night Plan Builder", expanded=False):
+            _location_needed()
     elif dso_list:
         dso_tuple = tuple(
             (d["name"], float(d["ra"]), float(d["dec"]),
@@ -2065,6 +2068,9 @@ def render_planet_section(location, start_time, duration, min_alt, max_alt, az_d
 
     if lat is None or lon is None or (lat == 0.0 and lon == 0.0):
         _location_needed()
+        st.markdown("---")
+        with st.expander("2. 📅 Night Plan Builder", expanded=False):
+            _location_needed()
     else:
         df_planets = get_planet_summary(lat, lon, start_time)
         if not df_planets.empty:
@@ -2508,6 +2514,9 @@ def render_comet_section(location, start_time, duration, min_alt, max_alt, az_di
         # Batch visibility table
         if lat is None or lon is None or (lat == 0.0 and lon == 0.0):
             _location_needed()
+            st.markdown("---")
+            with st.expander("2. 📅 Night Plan Builder", expanded=False):
+                _location_needed()
         elif active_comets:
             df_comets = get_comet_summary(lat, lon, start_time, tuple(active_comets))
 
@@ -3258,6 +3267,9 @@ def render_asteroid_section(location, start_time, duration, min_alt, max_alt, az
     # Batch visibility table
     if lat is None or lon is None or (lat == 0.0 and lon == 0.0):
         _location_needed()
+        st.markdown("---")
+        with st.expander("2. 📅 Night Plan Builder", expanded=False):
+            _location_needed()
     elif active_asteroids:
         df_asteroids = get_asteroid_summary(lat, lon, start_time, tuple(active_asteroids))
 
@@ -4065,8 +4077,11 @@ def render_cosmic_section(location, start_time, duration, min_alt, max_alt, az_d
     elif lat is not None and lon is not None and not (lat == 0.0 and lon == 0.0):
         st.error("Failed to scrape data. Please check the scraper logs.")
 
-    # Section 3 placeholder — shown whenever the data block above didn't render it
+    # Sections 2 & 3 placeholders — shown whenever the data block above didn't render them
     if df_alerts is None or df_alerts.empty:
+        st.markdown("---")
+        with st.expander("2. 📅 Night Plan Builder", expanded=False):
+            _location_needed()
         st.markdown("---")
         st.subheader("3. Select Target for Trajectory")
         _location_needed()
