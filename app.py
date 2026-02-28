@@ -796,15 +796,28 @@ def _render_night_plan_builder(
         )
     with _bc2:
         _csv_src = csv_data if csv_data is not None else df_obs
-        st.download_button(
-            csv_label,
-            data=_sanitize_csv_df(_csv_src).to_csv(index=False).encode('utf-8'),
-            file_name=csv_filename,
-            mime="text/csv",
-            use_container_width=True,
-            key=f"{section_key}_csv_all",
-            help="Download the full unfiltered target list as CSV.",
-        )
+        if link_col:
+            _all_xlsx = _df_to_cosmic_xlsx(_csv_src, target_col, link_col)
+            st.download_button(
+                csv_label.replace("(CSV)", "(XLSX)"),
+                data=_all_xlsx or b"",
+                file_name=csv_filename.replace(".csv", ".xlsx"),
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                use_container_width=True,
+                key=f"{section_key}_csv_all",
+                help="Download the full unfiltered target list as Excel. Object names are clickable hyperlinks to the Unistellar app.",
+                disabled=_all_xlsx is None,
+            )
+        else:
+            st.download_button(
+                csv_label,
+                data=_sanitize_csv_df(_csv_src).to_csv(index=False).encode('utf-8'),
+                file_name=csv_filename,
+                mime="text/csv",
+                use_container_width=True,
+                key=f"{section_key}_csv_all",
+                help="Download the full unfiltered target list as CSV.",
+            )
 
     if _do_build:
         if df_obs.empty:
@@ -909,16 +922,30 @@ def _render_night_plan_builder(
                     # Export buttons
                     _dl1, _dl2 = st.columns(2)
                     with _dl1:
-                        st.download_button(
-                            "📥 Download Plan (CSV)",
-                            data=_sanitize_csv_df(
-                                _plan_display
-                            ).to_csv(index=False).encode('utf-8'),
-                            file_name=f"night_plan_{start_time.strftime('%Y%m%d_%H%M')}.csv",
-                            mime="text/csv",
-                            use_container_width=True,
-                            key=f"{section_key}_csv_plan",
-                        )
+                        if _plan_link_col:
+                            _plan_xlsx = _df_to_cosmic_xlsx(
+                                _plan_display, target_col, _plan_link_col
+                            )
+                            st.download_button(
+                                "📥 Download Plan (XLSX)",
+                                data=_plan_xlsx or b"",
+                                file_name=f"night_plan_{start_time.strftime('%Y%m%d_%H%M')}.xlsx",
+                                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                                use_container_width=True,
+                                key=f"{section_key}_csv_plan",
+                                disabled=_plan_xlsx is None,
+                            )
+                        else:
+                            st.download_button(
+                                "📥 Download Plan (CSV)",
+                                data=_sanitize_csv_df(
+                                    _plan_display
+                                ).to_csv(index=False).encode('utf-8'),
+                                file_name=f"night_plan_{start_time.strftime('%Y%m%d_%H%M')}.csv",
+                                mime="text/csv",
+                                use_container_width=True,
+                                key=f"{section_key}_csv_plan",
+                            )
                     with _dl2:
                         _pdf = generate_plan_pdf(
                             _scheduled, _win_start_dt, _win_end_dt,
