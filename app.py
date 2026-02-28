@@ -1723,7 +1723,9 @@ st.sidebar.markdown("""
 
 # Calculate Moon Info
 moon_loc = None
-if lat is not None and lon is not None:
+moon_illum = 0
+location = None
+if lat is not None and lon is not None and not (lat == 0.0 and lon == 0.0):
     try:
         location = EarthLocation(lat=lat*u.deg, lon=lon*u.deg)
         t_moon = Time(start_time)
@@ -2779,98 +2781,106 @@ def render_comet_section(location, start_time, duration, min_alt, max_alt, az_di
                         st.markdown(f"- {_c['designation']}  *(q={_c.get('q', 0):.2f} AU{_H_str})*")
 
                 if st.button("\U0001f52d Calculate Visibility for Filtered Comets", key="cat_calc_btn"):
-                    if lat is not None and lon is not None:
+                    if lat is not None and lon is not None and not (lat == 0.0 and lon == 0.0):
                         _cat_names = tuple(_c["designation"] for _c in filtered_cat)
                         _df_cat = get_comet_summary(lat, lon, start_time, _cat_names)
                         st.session_state["_cat_df"] = _df_cat
+                        st.session_state["_cat_df_lat"] = lat
+                        st.session_state["_cat_df_lon"] = lon
                     else:
                         st.warning("Set your location in the sidebar first.")
 
                 if "_cat_df" in st.session_state:
-                    _df_cat = st.session_state["_cat_df"]
-                    if not _df_cat.empty:
-                        _location_cat = EarthLocation(lat=lat * u.deg, lon=lon * u.deg)
-                        _is_obs_cat, _reason_cat = [], []
-                        for _, _row in _df_cat.iterrows():
-                            try:
-                                _sc = SkyCoord(_row["RA"], _row["Dec"], frame="icrs")
-                                _check_times = [
-                                    start_time,
-                                    start_time + timedelta(minutes=duration / 2),
-                                    start_time + timedelta(minutes=duration),
-                                ]
-                                _obs, _reason = False, "Not in window (Alt/Az/Moon)"
-                                if str(_row.get("Status", "")) == "Never Rises":
-                                    _reason = "Never Rises"
-                                else:
-                                    for _t_chk in _check_times:
-                                        _aa = _sc.transform_to(AltAz(obstime=Time(_t_chk), location=_location_cat))
-                                        if min_alt <= _aa.alt.degree <= max_alt and (not az_dirs or az_in_selected(_aa.az.degree, az_dirs)):
-                                            _obs, _reason = True, ""
-                                            break
-                                _is_obs_cat.append(_obs)
-                                _reason_cat.append(_reason)
-                            except Exception:
-                                _is_obs_cat.append(False)
-                                _reason_cat.append("Parse Error")
+                    if (st.session_state.get("_cat_df_lat") != lat
+                            or st.session_state.get("_cat_df_lon") != lon):
+                        # Location changed since this was calculated — clear stale data
+                        del st.session_state["_cat_df"]
+                        st.info("Location changed. Click **Calculate Visibility** to refresh the catalog.")
+                    else:
+                        _df_cat = st.session_state["_cat_df"]
+                        if not _df_cat.empty:
+                            _location_cat = EarthLocation(lat=lat * u.deg, lon=lon * u.deg)
+                            _is_obs_cat, _reason_cat = [], []
+                            for _, _row in _df_cat.iterrows():
+                                try:
+                                    _sc = SkyCoord(_row["RA"], _row["Dec"], frame="icrs")
+                                    _check_times = [
+                                        start_time,
+                                        start_time + timedelta(minutes=duration / 2),
+                                        start_time + timedelta(minutes=duration),
+                                    ]
+                                    _obs, _reason = False, "Not in window (Alt/Az/Moon)"
+                                    if str(_row.get("Status", "")) == "Never Rises":
+                                        _reason = "Never Rises"
+                                    else:
+                                        for _t_chk in _check_times:
+                                            _aa = _sc.transform_to(AltAz(obstime=Time(_t_chk), location=_location_cat))
+                                            if min_alt <= _aa.alt.degree <= max_alt and (not az_dirs or az_in_selected(_aa.az.degree, az_dirs)):
+                                                _obs, _reason = True, ""
+                                                break
+                                    _is_obs_cat.append(_obs)
+                                    _reason_cat.append(_reason)
+                                except Exception:
+                                    _is_obs_cat.append(False)
+                                    _reason_cat.append("Parse Error")
 
-                        _df_cat["is_observable"] = _is_obs_cat
-                        _df_cat["filter_reason"] = _reason_cat
-                        _df_obs_cat = _df_cat[_df_cat["is_observable"]].copy()
-                        _add_peak_alt_session(_df_obs_cat, _location_cat, start_time, start_time + timedelta(minutes=duration))
-                        _df_filt_cat = _df_cat[~_df_cat["is_observable"]].copy()
+                            _df_cat["is_observable"] = _is_obs_cat
+                            _df_cat["filter_reason"] = _reason_cat
+                            _df_obs_cat = _df_cat[_df_cat["is_observable"]].copy()
+                            _add_peak_alt_session(_df_obs_cat, _location_cat, start_time, start_time + timedelta(minutes=duration))
+                            _df_filt_cat = _df_cat[~_df_cat["is_observable"]].copy()
 
-                        _tab_obs_cat, _tab_filt_cat = st.tabs([
-                            f"\U0001f3af Observable ({len(_df_obs_cat)})",
-                            f"\U0001f47b Unobservable ({len(_df_filt_cat)})"
-                        ])
-                        _show_cols_cat = ["Name", "Constellation", "Rise", "Transit", "Set",
-                                          "RA", "_dec_deg", "Status", "_peak_alt_session",
-                                          "Moon Sep (°)", "Moon Status"]
-                        with _tab_obs_cat:
-                            st.subheader("Observable Comets (Catalog)")
-                            _chart_sort_cat = plot_visibility_timeline(
-                                _df_obs_cat,
-                                obs_start=obs_start_naive if show_obs_window else None,
-                                obs_end=obs_end_naive if show_obs_window else None,
-                                default_sort_label="Priority Order"
-                            )
-                            _df_sorted_cat = _sort_df_like_chart(_df_obs_cat, _chart_sort_cat) if _chart_sort_cat else _df_obs_cat
-                            st.dataframe(
-                                _df_sorted_cat[[c for c in _show_cols_cat if c in _df_sorted_cat.columns]],
-                                hide_index=True, width="stretch", column_config=_MOON_SEP_COL_CONFIG
-                            )
-                            st.markdown("---")
-                            with st.expander("2. 📅 Night Plan Builder", expanded=True):
-                                _render_night_plan_builder(
-                                    df_obs=_df_obs_cat,
-                                    start_time=start_time,
-                                    night_plan_start=_night_plan_start,
-                                    night_plan_end=_night_plan_end,
-                                    local_tz=local_tz,
-                                    target_col="Name", ra_col="RA", dec_col="Dec",
-                                    csv_label="📊 Catalog Comets (CSV)",
-                                    csv_data=_df_cat,
-                                    csv_filename="catalog_comets_visibility.csv",
-                                    section_key="comet_catalog",
-                                    duration_minutes=duration,
-                                    location=location, min_alt=min_alt, min_moon_sep=min_moon_sep, az_dirs=az_dirs,
+                            _tab_obs_cat, _tab_filt_cat = st.tabs([
+                                f"\U0001f3af Observable ({len(_df_obs_cat)})",
+                                f"\U0001f47b Unobservable ({len(_df_filt_cat)})"
+                            ])
+                            _show_cols_cat = ["Name", "Constellation", "Rise", "Transit", "Set",
+                                              "RA", "_dec_deg", "Status", "_peak_alt_session",
+                                              "Moon Sep (°)", "Moon Status"]
+                            with _tab_obs_cat:
+                                st.subheader("Observable Comets (Catalog)")
+                                _chart_sort_cat = plot_visibility_timeline(
+                                    _df_obs_cat,
+                                    obs_start=obs_start_naive if show_obs_window else None,
+                                    obs_end=obs_end_naive if show_obs_window else None,
+                                    default_sort_label="Priority Order"
                                 )
-                        with _tab_filt_cat:
-                            st.caption("Comets not meeting your filters within the observation window.")
-                            if not _df_filt_cat.empty:
-                                _filt_show_cat = [c for c in ["Name", "filter_reason", "Rise", "Transit", "Set", "Status"] if c in _df_filt_cat.columns]
-                                st.dataframe(_df_filt_cat[_filt_show_cat], hide_index=True, width="stretch")
+                                _df_sorted_cat = _sort_df_like_chart(_df_obs_cat, _chart_sort_cat) if _chart_sort_cat else _df_obs_cat
+                                st.dataframe(
+                                    _df_sorted_cat[[c for c in _show_cols_cat if c in _df_sorted_cat.columns]],
+                                    hide_index=True, width="stretch", column_config=_MOON_SEP_COL_CONFIG
+                                )
+                                st.markdown("---")
+                                with st.expander("2. 📅 Night Plan Builder", expanded=True):
+                                    _render_night_plan_builder(
+                                        df_obs=_df_obs_cat,
+                                        start_time=start_time,
+                                        night_plan_start=_night_plan_start,
+                                        night_plan_end=_night_plan_end,
+                                        local_tz=local_tz,
+                                        target_col="Name", ra_col="RA", dec_col="Dec",
+                                        csv_label="📊 Catalog Comets (CSV)",
+                                        csv_data=_df_cat,
+                                        csv_filename="catalog_comets_visibility.csv",
+                                        section_key="comet_catalog",
+                                        duration_minutes=duration,
+                                        location=location, min_alt=min_alt, min_moon_sep=min_moon_sep, az_dirs=az_dirs,
+                                    )
+                            with _tab_filt_cat:
+                                st.caption("Comets not meeting your filters within the observation window.")
+                                if not _df_filt_cat.empty:
+                                    _filt_show_cat = [c for c in ["Name", "filter_reason", "Rise", "Transit", "Set", "Status"] if c in _df_filt_cat.columns]
+                                    st.dataframe(_df_filt_cat[_filt_show_cat], hide_index=True, width="stretch")
 
-                        st.download_button(
-                            "Download Catalog Data (CSV)",
-                            data=_sanitize_csv_df(_df_cat.drop(
-                                columns=["is_observable", "filter_reason", "_rise_datetime", "_set_datetime", "Moon Sep (°)", "Moon Status"],
-                                errors="ignore"
-                            )).to_csv(index=False).encode("utf-8"),
-                            file_name="catalog_comets_visibility.csv",
-                            mime="text/csv"
-                        )
+                            st.download_button(
+                                "Download Catalog Data (CSV)",
+                                data=_sanitize_csv_df(_df_cat.drop(
+                                    columns=["is_observable", "filter_reason", "_rise_datetime", "_set_datetime", "Moon Sep (°)", "Moon Status"],
+                                    errors="ignore"
+                                )).to_csv(index=False).encode("utf-8"),
+                                file_name="catalog_comets_visibility.csv",
+                                mime="text/csv"
+                            )
 
             # --- Trajectory picker for Catalog mode ---
             st.markdown("---")

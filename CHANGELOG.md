@@ -4,6 +4,59 @@ Bug fixes, discoveries, and notable changes. See CLAUDE.md for architecture and 
 
 ---
 
+## 2026-03-01 — Fix: vmag slider isinstance guard, _cat_df staleness, lat=0.0 guards
+
+**Branch:** `fix/location-state-guards` + direct main hotfix
+**Tests:** 96 pass
+
+### Issue A — vmag slider isinstance guard (hotfix to main, commits fbb3405 + 2cd52cf)
+
+Same crash class as `31812df`. The magnitude slider in `_render_night_plan_builder`
+used `value=` + `key=` without an isinstance guard. Stale scalar state (from
+a Streamlit Cloud version-mismatch session) would cause `_apply_night_plan_filters`
+to crash at `vmag_range[0]` with `TypeError: 'float' object is not subscriptable`.
+
+Fix: pop `{section_key}_vmag` from session state before the slider renders if it
+holds a non-tuple. Mirrors the win_range slider fix (`31812df`). Also reuses
+`_vmag_ss_key` as the `key=` argument to eliminate a repeated string literal.
+
+Rule: Any range slider managed with `key=` must have an isinstance guard clearing
+non-tuple state before the `st.slider()` call.
+
+### Issue B — `_cat_df` not invalidated on location change
+
+The Explore Catalog comet DataFrame was cached in session state without
+tracking which lat/lon it was calculated at. Moving to a new location showed
+stale rise/set times from the previous location.
+
+Fix: store `_cat_df_lat`/`_cat_df_lon` alongside `_cat_df`; compare against
+current sidebar values on each render; clear + show re-calculate prompt if different.
+
+Rule: Any session-state DataFrame that depends on lat/lon must store and validate
+its source coordinates.
+
+### Issue C — lat=0.0 guard inconsistency
+
+`lat` is always a `float` after the first render (number_input returns 0.0 as
+default, never None). Two callsites guarded with `is not None` (always True),
+causing the Moon panel and Catalog Calculate button to run at Null Island (0N, 0E)
+when no location was set. Also added `moon_illum = 0` and `location = None`
+pre-initializations (previously undefined if the block was skipped).
+
+Note: `'moon_illum' in locals()` guards at ~line 4161/4170 (trajectory view)
+are now logically dead (always True since `moon_illum` is always initialized at
+module scope). They cause no incorrect output — the surrounding `moon_loc` guards
+prevent the trajectory moon-status code from running without a real location.
+Clean-up deferred to a future pass.
+
+Fix: added `not (lat == 0.0 and lon == 0.0)` to both guards.
+
+Rule: Use `lat is not None and lon is not None and not (lat == 0.0 and lon == 0.0)`
+as the standard location guard. `is not None` alone is not sufficient since
+number_input always produces a float (0.0 when unset).
+
+---
+
 ## 2026-03-01 — Hotfix: Night Plan Builder session window slider crashes on Streamlit Cloud
 
 **Commit:** `31812df`
