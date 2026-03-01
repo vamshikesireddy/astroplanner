@@ -4,6 +4,30 @@ Bug fixes, discoveries, and notable changes. See CLAUDE.md for architecture and 
 
 ---
 
+## 2026-03-01 — populate_jpl_cache: 18 false failures fixed (asteroids + 3 comets)
+
+**Commit:** `9910705` → `7d54ba4` (pushed to `main`)
+
+**Problem:** GH Actions `update-jpl-cache.yml` was failing every week with 18 "failures" and creating a spurious GitHub Issue. All 16 asteroids and 3 periodic comets (24P/Schaumasse, 235P/LINEAR, 88P/Howell) were being reported as unresolvable.
+
+**Root cause — asteroids:** SBDB returns SPK-IDs in the `20000000+N` range for numbered bodies. The script had a guard that rejected any `[20M, 30M)` ID as "Horizons rejects these." This is correct for comets but wrong for asteroids. Horizons accepts numbered asteroid SPK-IDs in `2000000+N` format. The conversion is simply `sbdb_id − 18_000_000` (e.g., `20000433` → `2000433` for Eros).
+
+**Root cause — 3 comets:** Periodic comets 24P, 88P, 235P also receive `20M+N` SBDB internal IDs. Unlike asteroids there is no valid conversion — Horizons does reject these for comets. However, Horizons accepts the designation directly (`24P/Schaumasse`, etc.), so they just need to bypass the SBDB lookup entirely.
+
+**Fix 1 — `scripts/populate_jpl_cache.py`:** In `resolve_all`, when SBDB returns a `[20M, 30M)` ID and `section == "asteroids"`, convert to the correct Horizons SPK-ID instead of failing. Comets with bad IDs still go to `failed`.
+
+**Fix 2 — `jpl_id_overrides.yaml`:** Added `24P/Schaumasse`, `235P/LINEAR`, `88P/Howell` as overrides with their designation as the value. The script skips SBDB lookup for override entries; the app resolver queries Horizons by designation directly.
+
+**Test update — `tests/test_populate_jpl_cache.py`:** `test_bad_spk_id_not_saved` split into two tests:
+- `test_asteroid_sbdb_id_converted` — verifies `20000433` → `2000433` is saved
+- `test_comet_bad_spk_id_not_saved` — verifies `20001797` for a comet is still dropped
+
+**Verification:** Manually triggered `update-jpl-cache.yml` after push — passed in 16 seconds, 0 failures, 16 new asteroid SPK-IDs written to `jpl_id_cache.json`. 112 tests pass.
+
+**Rule:** SBDB returns `20000000+N` for all numbered bodies. For asteroids, convert to `2000000+N` (Horizons SPK-ID format). For comets, `[20M, 30M)` IDs are genuinely unusable — add to `jpl_id_overrides.yaml` with the comet's designation as the query value.
+
+---
+
 ## 2026-03-01 — DSO image click response: st.fragment (near-instant)
 
 **Branch:** `feature/dso-image-preview`
