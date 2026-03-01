@@ -1,0 +1,5 @@
+{
+  "pythonVersion": "3.13",
+  "include": ["."],
+  "exclude": ["__pycache__", ".git"]
+}
