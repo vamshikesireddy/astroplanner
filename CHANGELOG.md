@@ -4,6 +4,33 @@ Bug fixes, discoveries, and notable changes. See CLAUDE.md for architecture and 
 
 ---
 
+## 2026-03-01 — DSO image preview: click a row to see a photo
+
+**Branch:** `feature/dso-image-preview` (6 commits)
+
+**What was built:** Stars/Galaxies/Nebulae section now shows a photo of the selected object when the user clicks any row in the observable objects table. A card appears below the table with the image on the left and key metadata on the right (Name, Type, Magnitude, Constellation, Rise/Transit/Set, Moon Sep, Moon Status).
+
+**Image sources (hybrid):**
+- Curated Wikimedia Commons URLs stored in `dso_targets.yaml` for 27 popular Messier/NGC objects (M1, M8, M13, M16, M17, M20, M27, M31, M33, M42, M44, M45, M51, M57, M63, M64, M74, M81, M82, M83, M87, M97, M101, M104, M106, NGC 7000, NGC 869)
+- Aladin hips2fits API fallback for all other objects: `https://aladin.cds.unistra.fr/hips-image-services/hips2fits?hips=CDS/P/DSS2/color&ra={ra}&dec={dec}&width=400&height=400&fov={fov}&format=jpg`
+- Stars use `fov=0.3`; all other types use `fov=1.0`
+
+**Design decisions:**
+- No thumbnail column in the table — avoids ~167 parallel Aladin requests on load (lesson from JPL parallel call failures)
+- One image request per row click — browser loads it on demand, no Python-side fetching
+- `d.get("image_url") or None` pattern in dso_tuple — empty string treated same as missing (Aladin fallback activates)
+- Broken Wikimedia URLs degrade gracefully — Streamlit shows broken-image icon; remove the `image_url` line in YAML to switch to Aladin fallback
+
+**Files changed:**
+- `backend/app_logic.py` — new `_get_dso_image_url(ra, dec, obj_type, curated_url: str | None) -> str` helper
+- `app.py` — import added; `get_dso_summary()` extended to 7-element tuple + `_image_url` column; `display_dso_table()` uses `on_select="rerun"`, `selection_mode="single-row"`; image card rendered after table
+- `dso_targets.yaml` — `image_url` field added to 27 objects
+- `tests/test_app_logic.py` — 4 new tests for `_get_dso_image_url` (100 total, all pass)
+
+**To add more curated images:** Add `image_url: "https://..."` to any entry in `dso_targets.yaml` — no code changes needed.
+
+---
+
 ## 2026-03-01 — Hotfixes: Cosmic deep link post-merge fixes
 
 **Commits:** 770cb4d, 29f1721, 88f62d3 (direct to main)
