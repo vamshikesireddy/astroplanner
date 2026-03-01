@@ -7,5 +7,8 @@ comets:
   "240P": "90001202"             # 240P/NEAT Fragment A
   "240P/NEAT-B": "90001203"       # 240P/NEAT Fragment B (renamed from 240P-B)
   "C/2025 K1 (ATLAS)": "2025 K1" # multi-fragment; bare C/ prefix is ambiguous in Horizons
+  "24P/Schaumasse": "24P/Schaumasse"   # SBDB returns internal ID 20M+N; use designation directly
+  "235P/LINEAR": "235P/LINEAR"         # SBDB returns internal ID 20M+N; use designation directly
+  "88P/Howell": "88P/Howell"           # SBDB returns internal ID 20M+N; use designation directly
 asteroids:
   "3 Juno": "3;"     # bare '3' is ambiguous; trailing semicolon forces small-body search

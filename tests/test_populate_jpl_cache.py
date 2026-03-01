@@ -3,13 +3,22 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from scripts.populate_jpl_cache import resolve_all
 
-def test_bad_spk_id_not_saved(monkeypatch):
-    """SBDB internal IDs in [20M, 30M) must be dropped, not cached."""
+def test_asteroid_sbdb_id_converted(monkeypatch):
+    """SBDB internal IDs in [20M, 30M) for asteroids must be converted to 2M+N Horizons SPK-ID."""
     import scripts.populate_jpl_cache as pjc
     monkeypatch.setattr(pjc, "sbdb_lookup", lambda q: "20000433")
     resolved, failed = resolve_all(["433 Eros"], "asteroids", lambda n: n, {})
-    assert "433 Eros" not in resolved
-    assert "433 Eros" in failed
+    assert resolved.get("433 Eros") == "2000433"
+    assert "433 Eros" not in failed
+
+
+def test_comet_bad_spk_id_not_saved(monkeypatch):
+    """SBDB internal IDs in [20M, 30M) for comets must be dropped (Horizons rejects them)."""
+    import scripts.populate_jpl_cache as pjc
+    monkeypatch.setattr(pjc, "sbdb_lookup", lambda q: "20001797")
+    resolved, failed = resolve_all(["24P/Schaumasse"], "comets", lambda n: n, {})
+    assert "24P/Schaumasse" not in resolved
+    assert "24P/Schaumasse" in failed
 
 def test_valid_spk_id_saved(monkeypatch):
     """Valid comet SPK-IDs in [1_000_000, 2_000_000) must be kept."""

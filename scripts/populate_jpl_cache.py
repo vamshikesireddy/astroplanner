@@ -68,11 +68,17 @@ def resolve_all(names, section, strip_fn, overrides):
         if spk_id is None and query != name:
             spk_id = sbdb_lookup(name)   # also try full display name
         if spk_id:
-            # Guard: SBDB internal IDs in [20M, 30M) are rejected by Horizons
+            # Guard: SBDB internal IDs in [20M, 30M) are rejected by Horizons for comets.
+            # For numbered asteroids, SBDB returns 20000000+N; correct Horizons SPK-ID is 2000000+N.
             try:
                 if 20_000_000 <= int(spk_id) < 30_000_000:
-                    print(f"  SKIP (SBDB internal ID, Horizons rejects): {name!r} -> {spk_id!r}")
-                    failed.append(name)
+                    if section == "asteroids":
+                        horizons_id = str(int(spk_id) - 18_000_000)
+                        print(f"  OK:   {name!r} -> SPK-ID {horizons_id!r} (converted from SBDB {spk_id!r})")
+                        resolved[name] = horizons_id
+                    else:
+                        print(f"  SKIP (SBDB internal ID, Horizons rejects): {name!r} -> {spk_id!r}")
+                        failed.append(name)
                     continue
             except (ValueError, TypeError):
                 pass
