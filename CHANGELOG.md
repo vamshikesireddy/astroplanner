@@ -4,6 +4,26 @@ Bug fixes, discoveries, and notable changes. See CLAUDE.md for architecture and 
 
 ---
 
+## 2026-03-01 — DSO images pre-downloaded locally (instant loading)
+
+**Branch:** `feature/dso-image-preview` (follow-up to image card feature, 5 additional commits)
+
+**Problem:** External URL fetching on click caused 1–3 second delays; curated Wikimedia URLs had broken links with no validation; ~140 objects fell back to slow Aladin API at runtime.
+
+**Solution:** Pre-download all 167 DSO images via `scripts/download_dso_images.py`. Images stored in `assets/dso_images/` (400×400 JPEG, ~5 MB total). App reads from disk — instant load.
+
+**Bug discovered and fixed:** Aladin hips2fits URL used wrong hostname `aladin.cds.unistra.fr` (returns 404); correct host is `alasky.cds.unistra.fr`. Script downloaded 166/167 failed until hostname was corrected — then 166 downloaded + 1 skipped (already existed), 0 failed.
+
+**GitHub Actions:** `download-dso-images.yml` re-runs whenever `dso_targets.yaml` changes on `main` (prevents infinite loop — image commits use `[skip ci]`), automatically adding images for new objects or updated URLs.
+
+**Fallback:** Objects without a downloaded image show `st.info("📷 No image available")` — no broken-image icons.
+
+**Files:** `scripts/download_dso_images.py` (new), `.github/workflows/download-dso-images.yml` (new), `assets/dso_images/*.jpg` (167 new files), `backend/app_logic.py` + `app.py` (image card updated), `requirements.txt` (Pillow added).
+
+**Rule:** Aladin hips2fits correct base URL: `https://alasky.cds.unistra.fr/hips-image-services/hips2fits?...`
+
+---
+
 ## 2026-03-01 — DSO image preview: click a row to see a photo
 
 **Branch:** `feature/dso-image-preview` (6 commits)
