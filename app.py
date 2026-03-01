@@ -1610,18 +1610,21 @@ with st.expander("ℹ️ How to Use"):
 
     ### 1. Choose Target
     Select one of the six modes:
-    *   **🌌 Star/Galaxy/Nebula:** Browse the full Messier catalog, Bright Stars, or Astrophotography Favorites with batch visibility (Observable/Unobservable tabs + Gantt chart). Filter by object type. Select any target for a full trajectory, or use 'Custom Object...' to search SIMBAD for any object by name.
-    *   **🪐 Planet:** Select a major planet.
-    *   **☄️ Comet:** Two modes — **My List** (tracked comets with Unistellar priority highlights) or **Explore Catalog** (full MPC archive with orbit type and magnitude filters).
-    *   **🪨 Asteroid:** Batch visibility for tracked asteroids with Unistellar Planetary Defense priority highlights.
+    *   **🌌 Star/Galaxy/Nebula:** Browse the full Messier catalog, Bright Stars, or Astrophotography Favorites with batch visibility (Observable/Unobservable tabs + Gantt chart). Click any row to see a photo and details. Filter by object type. Select any target for a full trajectory, or use 'Custom Object...' to search SIMBAD for any object by name.
+    *   **🪐 Planet:** View all 8 planets at once with Observable/Unobservable tabs and Gantt timeline. Select one for a full trajectory.
+    *   **☄️ Comet:** Two modes — **My List** (tracked comets with Unistellar priority highlights and **Magnitude** column updated daily) or **Explore Catalog** (full MPC archive with orbit type and magnitude filters).
+    *   **🪨 Asteroid:** Batch visibility for tracked asteroids with Unistellar Planetary Defense priority highlights and **Magnitude** column updated daily.
     *   **💥 Cosmic Cataclysm:** Live alerts for transient events (novae, supernovae, variable stars). Report invalid/cancelled events or suggest priorities.
     *   **✍️ Manual:** Enter RA/Dec directly.
+
+    Each section's overview table has a **📊 Download All … Data (CSV)** button below the table — this exports all objects (not just the night plan). Use it to get the full dataset with visibility, magnitude, and Moon separation.
 
     ### 2. 📅 Night Plan Builder
     Inside the **Observable** tab, the **Night Plan Builder** is already open. Use it to plan your full night across all visible targets:
     *   **Session window** — Drag the range slider to set your imaging start and end. The slider spans the full night (18:00 tonight → 12:00 next morning); both handles show date and time (e.g. `Feb 27 22:00`). Step is 30 minutes.
     *   **Sort by Set Time or Transit Time** — controls plan order only.
-    *   **Filter** by Moon Status, priority level, magnitude, event type, and discovery recency.
+    *   **Brightest First** sort — available in Comet and Asteroid sections; sorts by Magnitude ascending (brightest target first).
+    *   **Filter** by Moon Status, priority level, magnitude range, event type, and discovery recency.
     *   **Export** as XLSX or PDF for Cosmic Cataclysm targets — the target name is a clickable link to the Unistellar app (tap on phone/iPad). Other sections export as CSV.
 
     ### 3. Select Target for Trajectory
