@@ -209,6 +209,90 @@ It is formatted with `st.column_config.NumberColumn(format="%d min")` inside `di
 
 **Rule:** Never convert a column to string just to add a unit suffix (e.g. `col.astype(str) + " min"`). That breaks column-header sorting. Always use `column_config` instead.
 
+### 7a. Moon Separation — How It Works
+
+Moon Sep is **shown** in all overview tables as a range string and in CSV exports. Moon Status is shown as a **separate column** next to Moon Sep in all overview tables, CSV exports, and the Night Plan PDF.
+
+**IMPORTANT — `moon_sep_deg()` helper (backend/core.py):**
+All Moon–target angular separations **must** use `moon_sep_deg(target, moon)` instead of `target.separation(moon).degree`. Astropy's `get_body('moon')` returns a 3D GCRS coordinate (with distance). Calling `.separation()` across ICRS↔GCRS with 3D coords produces wildly wrong results (e.g. 4.5° for objects 98° apart). The helper strips the Moon's distance to get a correct direction-only separation. See CHANGELOG.md entry 2026-02-23 for full details.
+
+**Overview table calculation** — `Moon Sep (°)` column stores a `"min°–max°"` range string:
+
+```python
+_seps = [moon_sep_deg(sc, ml) for ml in moon_locs_chk] if moon_locs_chk else []
+_min_sep = min(_seps) if _seps else (moon_sep_deg(sc, moon_loc) if moon_loc else 0.0)
+_max_sep = max(_seps) if _seps else _min_sep
+moon_sep_list.append(f"{_min_sep:.1f}°–{_max_sep:.1f}°" if moon_loc else "–")
+```
+
+Three check times: start / mid / end of the observation window. `_min_sep` (worst case) is used for `get_moon_status()` classification and the sidebar filter check. The range string is stored in the `Moon Sep (°)` column and formatted via `_MOON_SEP_COL_CONFIG` (which also configures `Moon Status` as a `TextColumn`).
+
+**Individual trajectory view:**
+- `compute_trajectory()` in `backend/core.py` calls `get_moon(time_utc, location)` at **every 10-minute timestep** and stores the per-step angular separation via `moon_sep_deg()` in a `Moon Sep (°)` column.
+- The trajectory **"Detailed Data"** table shows the exact Moon Sep angle at each row.
+- The trajectory **"Moon Sep" metric** (top of results) shows `min°–max°` computed from `df['Moon Sep (°)']` — the minimum drives the status classification and the warning threshold check.
+- The **Altitude vs Time chart** tooltip includes Moon Sep when hovering.
+- A `st.caption()` below the Detailed Data table notes: *"Moon Sep (°): angular separation from the Moon at each 10-min step."*
+- **Moon Status is NOT shown in the trajectory view** — it is an overview-level summary (based on worst-case sep across the whole window), not a per-step metric. Only the numeric `Moon Sep (°)` appears in trajectory rows.
+
+**Night Planner:**
+- `Moon Sep (°)` and `Moon Status` both appear in the Night Planner table and in the generated PDF export (`generate_plan_pdf`), column widths 1.6 cm and 1.4 cm respectively.
+
+**Sidebar filter note:**
+- The **"Min Moon Sep" sidebar filter** (slider) drives observability checks at the loop level — `sep_ok` is computed fresh from `moon_locs_chk[i]` for each target, NOT from the stored column. This is independent of the displayed Moon Status badge.
+
+### 7b. Sidebar Moon Panel
+
+Displayed under `st.sidebar.markdown("---")` in the main setup block (after the filter sliders). Computed once at app load whenever `lat`/`lon` are set.
+
+**Fields shown:**
+| Field | Source |
+|---|---|
+| Illumination | `0.5 * (1 - cos(elongation))` using `get_sun` + `get_moon` |
+| Altitude | `moon_loc.transform_to(AltAz(...)).alt.degree` |
+| Direction | `azimuth_to_compass(moon_az_deg)` + raw degrees |
+| RA | `_moon_sky.ra.to_string(unit=u.hour, sep='hms', precision=0)` e.g. `14h32m15s` |
+| Dec | `_moon_sky.dec.to_string(sep='dms', precision=0)` e.g. `+23d45m12s` |
+| Rise | `_moon_plan['_rise_datetime'].strftime("%H:%M")` (local time) |
+| Transit | `_moon_plan['_transit_datetime'].strftime("%H:%M")` (local time) |
+| Set | `_moon_plan['_set_datetime'].strftime("%H:%M")` (local time) |
+
+**Implementation note:** `moon_loc` from `get_moon()` carries a 3D GCRS distance. A plain `SkyCoord` is derived from it — `_moon_sky = SkyCoord(ra=moon_loc.ra, dec=moon_loc.dec, frame='icrs')` — before passing to `calculate_planning_info()` and for RA/Dec string formatting. Rise/transit/set use the same `calculate_planning_info()` function as all other targets. "Always Up" is handled gracefully; unavailable times fall back to `—`.
+
+### 7c. Azimuth Direction Filter (Compass Grid)
+
+Replaces the old `az_range` tuple slider (which couldn't express wrap-around ranges like NW→N→NE).
+
+**UI:** 8-direction checkbox grid (N/NE/E/SE/S/SW/W/NW) with degree range captions. Default: nothing checked = no filter.
+
+**Mental model:**
+- Nothing checked → no filter → all 360° shown (caption: `📡 No filter — showing all 360°`)
+- 1–7 checked → filter to selected directions only (caption: `📡 Filtering to: SE, S (2 of 8 directions)`)
+- All 8 checked → same as nothing checked (no filter)
+- Select All / Clear All buttons for convenience
+
+**Key module-level definitions (`app.py` ~line 46):**
+- `_AZ_OCTANTS` — dict mapping direction → list of `(lo, hi)` degree tuples. N has two tuples to handle wrap-around: `[(337.5, 360.0), (0.0, 22.5)]`.
+- `_AZ_LABELS` — ordered list `["N", "NE", "E", "SE", "S", "SW", "W", "NW"]`
+- `_AZ_CAPTIONS` — human-readable degree ranges shown under each checkbox
+- `az_in_selected(az_deg, selected_dirs)` — returns `True` if `az_deg` falls in any selected octant
+
+**Filter call pattern** (used in all 6 observability loops + trajectory check):
+```python
+(not az_dirs or az_in_selected(aa.az.degree, az_dirs))
+```
+Empty `az_dirs` = short-circuit to True (no filter). Non-empty = check octants.
+
+**Session state keys:** `az_N`, `az_NE`, `az_E`, `az_SE`, `az_S`, `az_SW`, `az_W`, `az_NW` — all default `False`.
+
+**Status thresholds** (`get_moon_status(illumination, separation)`):
+- 🌑 Dark Sky: illumination < 15%
+- ⛔ Avoid: illumination ≥ 15% and sep < 30°
+- ⚠️ Caution: illumination ≥ 15% and sep 30°–60°
+- ✅ Safe: illumination ≥ 15% and sep > 60°
+
+Note: thresholds do not scale with illumination above 15% — a full moon at 65° shows Safe. May be refined later.
+
 ### 7d. Visual Magnitude (Comet & Asteroid Watchlists)
 
 Comet (My List) and Asteroid sections carry a **`Magnitude`** column populated from JPL Horizons:
@@ -245,90 +329,6 @@ Moon Sep caption / Legend
 ```
 
 The Night Plan Builder's own CSV/PDF export (inside the expander) exports only the filtered night plan targets.
-
-### 7a. Moon Separation — How It Works
-
-Moon Sep is **shown** in all overview tables as a range string and in CSV exports. Moon Status is shown as a **separate column** next to Moon Sep in all overview tables, CSV exports, and the Night Plan PDF.
-
-**IMPORTANT — `moon_sep_deg()` helper (backend/core.py):**
-All Moon–target angular separations **must** use `moon_sep_deg(target, moon)` instead of `target.separation(moon).degree`. Astropy's `get_body('moon')` returns a 3D GCRS coordinate (with distance). Calling `.separation()` across ICRS↔GCRS with 3D coords produces wildly wrong results (e.g. 4.5° for objects 98° apart). The helper strips the Moon's distance to get a correct direction-only separation. See CHANGELOG.md entry 2026-02-23 for full details.
-
-**Overview table calculation** — `Moon Sep (°)` column stores a `"min°–max°"` range string:
-
-```python
-_seps = [moon_sep_deg(sc, ml) for ml in moon_locs_chk] if moon_locs_chk else []
-_min_sep = min(_seps) if _seps else (moon_sep_deg(sc, moon_loc) if moon_loc else 0.0)
-_max_sep = max(_seps) if _seps else _min_sep
-moon_sep_list.append(f"{_min_sep:.1f}°–{_max_sep:.1f}°" if moon_loc else "–")
-```
-
-Three check times: start / mid / end of the observation window. `_min_sep` (worst case) is used for `get_moon_status()` classification and the sidebar filter check. The range string is stored in the `Moon Sep (°)` column and formatted via `_MOON_SEP_COL_CONFIG` (which also configures `Moon Status` as a `TextColumn`).
-
-**Individual trajectory view:**
-- `compute_trajectory()` in `backend/core.py` calls `get_moon(time_utc, location)` at **every 10-minute timestep** and stores the per-step angular separation via `moon_sep_deg()` in a `Moon Sep (°)` column.
-- The trajectory **"Detailed Data"** table shows the exact Moon Sep angle at each row.
-- The trajectory **"Moon Sep" metric** (top of results) shows `min°–max°` computed from `df['Moon Sep (°)']` — the minimum drives the status classification and the warning threshold check.
-- The **Altitude vs Time chart** tooltip includes Moon Sep when hovering.
-- A `st.caption()` below the Detailed Data table notes: *"Moon Sep (°): angular separation from the Moon at each 10-min step."*
-- **Moon Status is NOT shown in the trajectory view** — it is an overview-level summary (based on worst-case sep across the whole window), not a per-step metric. Only the numeric `Moon Sep (°)` appears in trajectory rows.
-
-**Night Planner:**
-- `Moon Sep (°)` and `Moon Status` both appear in the Night Planner table and in the generated PDF export (`generate_plan_pdf`), column widths 1.6 cm and 1.4 cm respectively.
-
-**Sidebar filter note:**
-- The **"Min Moon Sep" sidebar filter** (slider) drives observability checks at the loop level — `sep_ok` is computed fresh from `moon_locs_chk[i]` for each target, NOT from the stored column. This is independent of the displayed Moon Status badge.
-
-### 7c. Azimuth Direction Filter (Compass Grid)
-
-Replaces the old `az_range` tuple slider (which couldn't express wrap-around ranges like NW→N→NE).
-
-**UI:** 8-direction checkbox grid (N/NE/E/SE/S/SW/W/NW) with degree range captions. Default: nothing checked = no filter.
-
-**Mental model:**
-- Nothing checked → no filter → all 360° shown (caption: `📡 No filter — showing all 360°`)
-- 1–7 checked → filter to selected directions only (caption: `📡 Filtering to: SE, S (2 of 8 directions)`)
-- All 8 checked → same as nothing checked (no filter)
-- Select All / Clear All buttons for convenience
-
-**Key module-level definitions (`app.py` ~line 46):**
-- `_AZ_OCTANTS` — dict mapping direction → list of `(lo, hi)` degree tuples. N has two tuples to handle wrap-around: `[(337.5, 360.0), (0.0, 22.5)]`.
-- `_AZ_LABELS` — ordered list `["N", "NE", "E", "SE", "S", "SW", "W", "NW"]`
-- `_AZ_CAPTIONS` — human-readable degree ranges shown under each checkbox
-- `az_in_selected(az_deg, selected_dirs)` — returns `True` if `az_deg` falls in any selected octant
-
-**Filter call pattern** (used in all 6 observability loops + trajectory check):
-```python
-(not az_dirs or az_in_selected(aa.az.degree, az_dirs))
-```
-Empty `az_dirs` = short-circuit to True (no filter). Non-empty = check octants.
-
-**Session state keys:** `az_N`, `az_NE`, `az_E`, `az_SE`, `az_S`, `az_SW`, `az_W`, `az_NW` — all default `False`.
-
-**Status thresholds** (`get_moon_status(illumination, separation)`):
-- 🌑 Dark Sky: illumination < 15%
-- ⛔ Avoid: illumination ≥ 15% and sep < 30°
-- ⚠️ Caution: illumination ≥ 15% and sep 30°–60°
-- ✅ Safe: illumination ≥ 15% and sep > 60°
-
-Note: thresholds do not scale with illumination above 15% — a full moon at 65° shows Safe. May be refined later.
-
-### 7b. Sidebar Moon Panel
-
-Displayed under `st.sidebar.markdown("---")` in the main setup block (after the filter sliders). Computed once at app load whenever `lat`/`lon` are set.
-
-**Fields shown:**
-| Field | Source |
-|---|---|
-| Illumination | `0.5 * (1 - cos(elongation))` using `get_sun` + `get_moon` |
-| Altitude | `moon_loc.transform_to(AltAz(...)).alt.degree` |
-| Direction | `azimuth_to_compass(moon_az_deg)` + raw degrees |
-| RA | `_moon_sky.ra.to_string(unit=u.hour, sep='hms', precision=0)` e.g. `14h32m15s` |
-| Dec | `_moon_sky.dec.to_string(sep='dms', precision=0)` e.g. `+23d45m12s` |
-| Rise | `_moon_plan['_rise_datetime'].strftime("%H:%M")` (local time) |
-| Transit | `_moon_plan['_transit_datetime'].strftime("%H:%M")` (local time) |
-| Set | `_moon_plan['_set_datetime'].strftime("%H:%M")` (local time) |
-
-**Implementation note:** `moon_loc` from `get_moon()` carries a 3D GCRS distance. A plain `SkyCoord` is derived from it — `_moon_sky = SkyCoord(ra=moon_loc.ra, dec=moon_loc.dec, frame='icrs')` — before passing to `calculate_planning_info()` and for RA/Dec string formatting. Rise/transit/set use the same `calculate_planning_info()` function as all other targets. "Always Up" is handled gracefully; unavailable times fall back to `—`.
 
 ### 8. Night Plan Builder (all sections)
 
