@@ -65,6 +65,7 @@ from backend.app_logic import (
     _sanitize_csv_df, _add_peak_alt_session,
     _apply_night_plan_filters,
     _get_dso_image_url,
+    _get_dso_local_image,
 )
 
 
@@ -2044,16 +2045,14 @@ def render_dso_section(location, start_time, duration, min_alt, max_alt, az_dirs
                 if _dso_sel and _dso_sel.selection.rows:
                     _row_idx = _dso_sel.selection.rows[0]
                     _sel_row = _df_sorted_d.iloc[_row_idx]
-                    _img_url = _get_dso_image_url(
-                        _sel_row.get("_ra_deg", 0.0),
-                        _sel_row.get("_dec_deg", 0.0),
-                        _sel_row.get("Type", ""),
-                        _sel_row.get("_image_url") or None,
-                    )
+                    _img_path = _get_dso_local_image(_sel_row.get("Name", ""))
                     with st.container(border=True):
                         _ic1, _ic2 = st.columns([1, 2])
                         with _ic1:
-                            st.image(_img_url, use_container_width=True)
+                            if _img_path:
+                                st.image(str(_img_path), use_container_width=True)
+                            else:
+                                st.info("📷 No image available for this object")
                         with _ic2:
                             _obj_name = _sel_row.get("Name", "")
                             _common = _sel_row.get("Common Name", "")
