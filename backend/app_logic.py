@@ -109,7 +109,7 @@ def _check_row_observability(sc, row_status, location, check_times, moon_loc, mo
 
 # ── DataFrame sort helpers ───────────────────────────────────────────────────
 
-def _sort_df_like_chart(df, sort_option, priority_col=None):
+def _sort_df_like_chart(df, sort_option, priority_col=None, brightness_col=None):
     """Reorder a DataFrame to match the Gantt chart sort selection.
 
     For Earliest Rise/Set/Transit, 'Always Up' objects are pushed to the bottom
@@ -132,6 +132,10 @@ def _sort_df_like_chart(df, sort_option, priority_col=None):
         reg = df[~_au].sort_values('_transit_datetime', ascending=True, na_position='last')
         au = df[_au].sort_values('_transit_datetime', ascending=True, na_position='last')
         return pd.concat([reg, au])
+    elif sort_option == "Brightest First" and brightness_col and brightness_col in df.columns:
+        tmp = df.copy()
+        tmp['_vmag_sort'] = pd.to_numeric(tmp[brightness_col], errors='coerce')
+        return tmp.sort_values('_vmag_sort', ascending=True, na_position='last').drop(columns=['_vmag_sort'])
     elif priority_col and priority_col in df.columns:
         _PRI_RANK = {"URGENT": 0, "HIGH": 1, "LOW": 2}
 

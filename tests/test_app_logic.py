@@ -335,3 +335,29 @@ def test_get_dso_local_image_sanitizes_name(tmp_path):
     (tmp_path / "NGC_7000.jpg").write_bytes(b"fake")
     result = _get_dso_local_image("NGC 7000", base_dir=tmp_path)
     assert result == tmp_path / "NGC_7000.jpg"
+
+
+# ── _sort_df_like_chart Brightest First tests ─────────────────────────────────
+
+def test_sort_df_brightest_first():
+    """'Brightest First' sorts ascending by Magnitude; NaN rows go to bottom."""
+    df = pd.DataFrame({
+        "Name":      ["Bright", "Faint", "Unknown"],
+        "Status":    ["Visible", "Visible", "Visible"],
+        "Magnitude": [6.0, 14.5, float("nan")],
+    })
+    result = _sort_df_like_chart(df, "Brightest First", brightness_col="Magnitude")
+    names = result["Name"].tolist()
+    assert names[0] == "Bright"
+    assert names[1] == "Faint"
+    assert names[2] == "Unknown"   # NaN at bottom
+
+
+def test_sort_df_brightest_first_missing_col_returns_unchanged():
+    """'Brightest First' with no Magnitude col -> return df unchanged."""
+    df = pd.DataFrame({
+        "Name":   ["A", "B"],
+        "Status": ["Visible", "Visible"],
+    })
+    result = _sort_df_like_chart(df, "Brightest First", brightness_col="Magnitude")
+    assert result["Name"].tolist() == ["A", "B"]
