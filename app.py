@@ -493,6 +493,11 @@ def generate_plan_pdf(df_plan, night_start, night_end,
                     cells.append(Paragraph(f"{float(row.get(col, '')):.0f}°", cell_s))
                 except Exception:
                     cells.append(Paragraph('—', cell_s))
+            elif col == vmag_col and vmag_col:
+                try:
+                    cells.append(Paragraph(f"{float(row.get(col, '')):.1f}", cell_s))
+                except Exception:
+                    cells.append(Paragraph('—', cell_s))
             else:
                 cells.append(Paragraph(str(row.get(col, '') or ''), cell_s))
         data.append(cells)
@@ -1035,6 +1040,7 @@ _MOON_SEP_COL_CONFIG = {
         help="Highest altitude this object reaches during your observation window "
              "(sidebar Start Time + Duration). Sampled at 5 points.",
     ),
+    "Magnitude": st.column_config.NumberColumn("Magnitude", format="%.1f"),
 }
 
 # Aliases for comets that appear under alternate designations on external pages
