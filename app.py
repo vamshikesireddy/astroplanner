@@ -1685,6 +1685,7 @@ def search_address():
             if g.ok:
                 st.session_state.lat = g.latlng[0]
                 st.session_state.lon = g.latlng[1]
+                st.session_state._last_addr = st.session_state.addr_search
         except Exception:
             pass
 
@@ -1703,7 +1704,7 @@ _GPS_ERROR_MESSAGES = {
 # Restore location from sessionStorage (once per browser session)
 if _ss_js and "_loc_loaded" not in st.session_state:
     _js_loc = _ss_js(
-        js_expressions='JSON.stringify({lat: sessionStorage.getItem("astro_lat"), lon: sessionStorage.getItem("astro_lon")})',
+        js_expressions='JSON.stringify({lat: sessionStorage.getItem("astro_lat"), lon: sessionStorage.getItem("astro_lon"), addr: sessionStorage.getItem("astro_addr")})',
         key="ss_read_loc",
         want_output=True,
     )
@@ -1718,6 +1719,12 @@ if _ss_js and "_loc_loaded" not in st.session_state:
             if (_lat != 0.0 or _lon != 0.0) and (_cur_lat == 0.0 and _cur_lon == 0.0):
                 st.session_state.lat = _lat
                 st.session_state.lon = _lon
+            _addr = _d.get("addr") or ""
+            if _addr:
+                st.session_state._last_addr = _addr
+                # Pre-fill plain text_input (fallback path) if not yet set
+                if "addr_search" not in st.session_state:
+                    st.session_state.addr_search = _addr
         except Exception:
             pass
 
@@ -1743,7 +1750,8 @@ def search_osm(search_term):
     if not search_term: return []
     try:
         g = geocoder.arcgis(search_term, maxRows=5, timeout=10)
-        return [(r.address, r.latlng) for r in g] if g.ok else []
+        # Value includes address label so the selection handler can store it
+        return [(r.address, (r.address, r.latlng[0], r.latlng[1])) for r in g] if g.ok else []
     except Exception:
         return []
 
@@ -1755,18 +1763,23 @@ if st_searchbox:
             label="Search Address"
         )
     if selected_loc:
-        st.session_state.lat = selected_loc[0]
-        st.session_state.lon = selected_loc[1]
+        _sel_addr, _sel_lat, _sel_lon = selected_loc
+        st.session_state.lat = _sel_lat
+        st.session_state.lon = _sel_lon
+        st.session_state._last_addr = _sel_addr
+    if st.session_state.get("_last_addr"):
+        st.sidebar.caption(f"📍 {st.session_state._last_addr}")
 else:
     st.sidebar.text_input("Search Address", key="addr_search", on_change=search_address, help="Enter city or address to update coordinates")
     st.sidebar.caption("Install `streamlit-searchbox` for autocomplete.")
 
 lat = st.sidebar.number_input("Latitude", key="lat", format="%.4f")
 lon = st.sidebar.number_input("Longitude", key="lon", format="%.4f")
-# Persist current location to sessionStorage whenever valid coordinates are present
+# Persist current location + address to sessionStorage whenever valid coordinates are present
 if _ss_js and (lat != 0.0 or lon != 0.0):
+    _addr_to_save = st.session_state.get("_last_addr", "").replace("\\", "\\\\").replace('"', '\\"')
     _ss_js(
-        js_expressions=f'sessionStorage.setItem("astro_lat", "{lat}"); sessionStorage.setItem("astro_lon", "{lon}")',
+        js_expressions=f'sessionStorage.setItem("astro_lat", "{lat}"); sessionStorage.setItem("astro_lon", "{lon}"); sessionStorage.setItem("astro_addr", "{_addr_to_save}")',
         key="ss_write_loc",
         want_output=False,
     )
