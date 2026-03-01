@@ -54,10 +54,10 @@ def _build_epochs(days=HORIZON_DAYS):
 def _extract_positions(result, section=None):
     """Convert Horizons result rows → list of {date, ra, dec, vmag} dicts.
 
-    section: 'comets' → reads T-mag; 'asteroids' → reads V; None → vmag=None.
+    section: 'comets' → reads Tmag; 'asteroids' → reads V; None → vmag=None.
     vmag is None when the column is absent or the value is masked/non-numeric.
     """
-    vmag_col = 'T-mag' if section == 'comets' else ('V' if section == 'asteroids' else None)
+    vmag_col = 'Tmag' if section == 'comets' else ('V' if section == 'asteroids' else None)
     positions = []
     for row in result:
         t = Time(float(row['datetime_jd']), format='jd', scale='utc')

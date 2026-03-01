@@ -96,12 +96,12 @@ def test_build_epochs_date_format():
 
 
 def test_extract_positions_includes_vmag_comet():
-    """Comet rows: vmag comes from T-mag column."""
+    """Comet rows: vmag comes from Tmag column (Horizons uses no hyphen)."""
     from scripts.update_ephemeris_cache import _extract_positions
 
     class MockRow:
         def __init__(self, jd, ra, dec, tmag):
-            self._data = {"datetime_jd": jd, "RA": ra, "DEC": dec, "T-mag": tmag}
+            self._data = {"datetime_jd": jd, "RA": ra, "DEC": dec, "Tmag": tmag}
         def __getitem__(self, key):
             return self._data[key]
 
@@ -126,7 +126,7 @@ def test_extract_positions_includes_vmag_asteroid():
 
 
 def test_extract_positions_vmag_none_on_missing_column():
-    """Missing T-mag/V column → vmag is None, no crash."""
+    """Missing Tmag/V column → vmag is None, no crash."""
     from scripts.update_ephemeris_cache import _extract_positions
 
     class MockRow:

@@ -82,7 +82,7 @@ def resolve_horizons(obj_name, obs_time_str="2026-02-13 00:30:00", location_code
 def resolve_horizons_with_mag(obj_name, obs_time_str, section, location_code='500'):
     """Like resolve_horizons but also returns visual magnitude.
 
-    section: 'comets' → reads T-mag column; 'asteroids' → reads V column.
+    section: 'comets' → reads Tmag column; 'asteroids' → reads V column.
     Returns (name, SkyCoord, vmag) where vmag is float or None.
     vmag is None when the column is absent or the value is out of range.
     """
@@ -96,7 +96,7 @@ def resolve_horizons_with_mag(obj_name, obs_time_str, section, location_code='50
     dec = result['DEC'][0] * u.deg
     sky_coord = SkyCoord(ra=ra, dec=dec, frame='icrs')
 
-    vmag_col = 'T-mag' if section == 'comets' else 'V'
+    vmag_col = 'Tmag' if section == 'comets' else 'V'
     vmag = None
     try:
         v = float(result[vmag_col][0])
