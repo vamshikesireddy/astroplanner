@@ -291,3 +291,27 @@ def test_apply_filters_always_up_passes_window():
         sel_moon=None, all_moon_statuses=[],
     )
     assert len(result) == 1
+
+
+# ── _get_dso_image_url ────────────────────────────────────────────────────────
+
+from backend.app_logic import _get_dso_image_url
+
+def test_get_dso_image_url_returns_curated_when_set():
+    url = _get_dso_image_url(10.685, 41.269, "Galaxy", "https://example.com/m31.jpg")
+    assert url == "https://example.com/m31.jpg"
+
+def test_get_dso_image_url_builds_aladin_for_galaxy():
+    url = _get_dso_image_url(10.685, 41.269, "Galaxy", None)
+    assert "aladin.cds.unistra.fr" in url
+    assert "ra=10.685" in url
+    assert "dec=41.269" in url
+    assert "fov=1.0" in url
+
+def test_get_dso_image_url_uses_narrow_fov_for_star():
+    url = _get_dso_image_url(101.287, -16.793, "Star", None)
+    assert "fov=0.3" in url
+
+def test_get_dso_image_url_ignores_empty_string_curated():
+    url = _get_dso_image_url(10.685, 41.269, "Galaxy", "")
+    assert "aladin.cds.unistra.fr" in url

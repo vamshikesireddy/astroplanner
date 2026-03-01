@@ -350,3 +350,21 @@ def _apply_night_plan_filters(
         out = out[out['Moon Status'].isin(sel_moon)]
 
     return out
+
+
+# ── DSO image URL resolution ──────────────────────────────────────────────────
+
+def _get_dso_image_url(ra: float, dec: float, obj_type: str, curated_url) -> str:
+    """Return an image URL for the given DSO.
+
+    Prefers a curated_url from dso_targets.yaml. Falls back to an Aladin
+    hips2fits sky cutout built from RA/Dec. Stars use a narrower field of view.
+    """
+    if curated_url:
+        return curated_url
+    fov = 0.3 if obj_type == "Star" else 1.0
+    return (
+        f"https://aladin.cds.unistra.fr/hips-image-services/hips2fits?"
+        f"hips=CDS/P/DSS2/color&ra={ra}&dec={dec}"
+        f"&width=400&height=400&fov={fov}&format=jpg"
+    )
