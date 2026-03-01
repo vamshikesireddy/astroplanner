@@ -64,6 +64,7 @@ from backend.app_logic import (
     _sort_df_like_chart, build_night_plan,
     _sanitize_csv_df, _add_peak_alt_session,
     _apply_night_plan_filters,
+    _get_dso_image_url,
 )
 
 
